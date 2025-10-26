@@ -103,6 +103,7 @@ export const galleryImages = [
 ];
 
 // Determine if an item should be wide (span 2 columns)
+// 20% of items are wide (every 5th item)
 export const isWideItem = (index) => {
-  return index % 3 === 0 || index % 5 === 0;
+  return index % 5 === 0;
 };
