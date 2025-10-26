@@ -38,12 +38,21 @@ function Gallery() {
     const rowHeight = 10 // matches grid-auto-rows
     const rowGap = 20 // matches gap
 
+    // Check for both images and video containers
     const img = item.querySelector('img')
-    if (!img || !img.complete) return
+    const video = item.querySelector('.video-container')
 
-    const contentHeight = img.getBoundingClientRect().height
+    let contentHeight = 0
+
+    if (img && img.complete) {
+      contentHeight = img.getBoundingClientRect().height
+    } else if (video) {
+      contentHeight = video.getBoundingClientRect().height
+    } else {
+      return
+    }
+
     const rowSpan = Math.ceil((contentHeight + rowGap) / (rowHeight + rowGap))
-
     item.style.gridRowEnd = `span ${rowSpan}`
   }
 
@@ -55,7 +64,7 @@ function Gallery() {
     resizeGridItem(item)
   }
 
-  // Recalculate on window resize
+  // Recalculate on window resize and when items are loaded
   useEffect(() => {
     const resizeAllGridItems = () => {
       if (!gridRef.current) return
@@ -66,6 +75,18 @@ function Gallery() {
     window.addEventListener('resize', resizeAllGridItems)
     return () => window.removeEventListener('resize', resizeAllGridItems)
   }, [])
+
+  // Resize grid items when gallery items are loaded
+  useEffect(() => {
+    if (galleryItems.length > 0) {
+      // Wait for videos to be rendered
+      setTimeout(() => {
+        if (!gridRef.current) return
+        const items = gridRef.current.querySelectorAll('.masonry-item')
+        items.forEach(item => resizeGridItem(item))
+      }, 100)
+    }
+  }, [galleryItems])
 
   return (
     <div className="gallery-container">
@@ -95,12 +116,29 @@ function Gallery() {
                 loadedImages.has(index) ? 'loaded' : ''
               }`}
             >
-              <img
-                src={`/${item.src}`}
-                alt={item.alt}
-                loading="lazy"
-                onLoad={(e) => handleImageLoad(e, index)}
-              />
+              {item.mediaType === 'video' ? (
+                <div className="video-container" style={{ aspectRatio: item.aspectRatio || '16 / 9' }}>
+                  <iframe
+                    src={item.src}
+                    frameBorder="0"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowFullScreen
+                    title={item.alt}
+                    onLoad={() => {
+                      setLoadedImages(prev => new Set([...prev, index]))
+                      const container = document.querySelector(`[data-index="${index}"]`)
+                      if (container) resizeGridItem(container.parentElement)
+                    }}
+                  ></iframe>
+                </div>
+              ) : (
+                <img
+                  src={`/${item.src}`}
+                  alt={item.alt}
+                  loading="lazy"
+                  onLoad={(e) => handleImageLoad(e, index)}
+                />
+              )}
             </div>
           ))}
         </div>

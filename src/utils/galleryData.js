@@ -11,14 +11,17 @@ export const fetchGalleryData = async () => {
     const csvText = await response.text();
     const rows = parseCSV(csvText);
 
-    // Filter for images and gifs only, extract src
+    // Filter for images, gifs, and videos, extract src
     const mediaItems = rows
-      .filter(row => row.media_type === 'image' || row.media_type === 'gif')
+      .filter(row => row.media_type === 'image' || row.media_type === 'gif' || row.media_type === 'video')
       .map(row => ({
         id: row.id,
         src: row.src,
         alt: row.alt || 'Gallery item',
         mediaType: row.media_type,
+        aspectRatio: row.aspect_ratio,
+        width: row.width,
+        height: row.height,
         client: row.client,
         project: row.project,
         category: row.category,
