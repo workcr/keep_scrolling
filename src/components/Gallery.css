@@ -36,7 +36,8 @@
   gap: 20px;
   /* Desktop: 4 columns */
   grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: auto; /* Let rows size based on content */
+  grid-auto-rows: 10px; /* Small row unit for masonry calculation */
+  grid-auto-flow: dense; /* Fill gaps intelligently */
 }
 
 /* Masonry Items */
