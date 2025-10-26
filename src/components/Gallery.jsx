@@ -10,6 +10,14 @@ function Gallery() {
   const [loadedImages, setLoadedImages] = useState(new Set())
   const gridRef = useRef(null)
 
+  // Add autoplay parameters to video URL
+  const getVideoUrl = (src) => {
+    if (!src) return src
+
+    const separator = src.includes('?') ? '&' : '?'
+    return `${src}${separator}autoplay=1&muted=1&loop=1&background=1`
+  }
+
   // Fetch gallery data from Google Sheets on mount
   useEffect(() => {
     const loadGalleryData = async () => {
@@ -119,7 +127,7 @@ function Gallery() {
               {item.mediaType === 'video' ? (
                 <div className="video-container" style={{ aspectRatio: item.aspectRatio || '16 / 9' }}>
                   <iframe
-                    src={item.src}
+                    src={getVideoUrl(item.src)}
                     frameBorder="0"
                     allow="autoplay; fullscreen; picture-in-picture"
                     allowFullScreen
