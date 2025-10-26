@@ -144,3 +144,23 @@
   background: rgba(0, 0, 0, 0.05);
   min-height: 200px;
 }
+
+/* Gallery loading and error states */
+.gallery-loading,
+.gallery-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
+}
+
+.gallery-loading p {
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.gallery-error p {
+  font-size: 1.2rem;
+  color: #d32f2f;
+}
