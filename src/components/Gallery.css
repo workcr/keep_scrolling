@@ -34,8 +34,8 @@
 .masonry-grid {
   display: grid;
   gap: 20px;
-  /* Desktop: 4 columns */
-  grid-template-columns: repeat(4, 1fr);
+  /* Big Desktop (>= 1920px): 8 columns */
+  grid-template-columns: repeat(8, 1fr);
   grid-auto-rows: 10px; /* Small row unit for masonry calculation */
   grid-auto-flow: dense; /* Fill gaps intelligently */
 }
@@ -79,6 +79,13 @@
 }
 
 /* Responsive Breakpoints */
+
+/* Desktop (1200-1919px): 6 columns total, wide items span 2 */
+@media (max-width: 1919px) {
+  .masonry-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
 
 /* Tablet (768-1199px): 3 columns total, wide items span 2 */
 @media (max-width: 1199px) and (min-width: 768px) {
