@@ -46,8 +46,9 @@
   overflow: hidden;
   border-radius: 4px;
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transform: translateY(10px);
+  transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+  will-change: opacity, transform;
 }
 
 .masonry-item.loaded {
@@ -66,6 +67,7 @@
   display: block;
   transition: transform 0.4s ease, box-shadow 0.4s ease;
   border-radius: 4px;
+  background: rgba(0, 0, 0, 0.03);
 }
 
 /* Video containers */

@@ -13,11 +13,10 @@ function Gallery() {
   const [isLoadingMore, setIsLoadingMore] = useState(false) // Prevent double-loading
   const gridRef = useRef(null)
   const sentinelRef = useRef(null)
-  const lastScrollTop = useRef(0)
+  const lastLoadedCount = useRef(0) // Track items count to know which are new
 
   const INITIAL_LOAD = 30 // Load first 30 items
-  const BATCH_SIZE = 15 // Load 15 more when scrolling
-  const MAX_ITEMS = 60 // Keep max 60 items in DOM (rolling window)
+  const BATCH_SIZE = 8 // Load 8 more when scrolling (smaller = smoother)
 
   // Add autoplay parameters to video URL
   const getVideoUrl = (src) => {
@@ -104,7 +103,7 @@ function Gallery() {
     return () => window.removeEventListener('resize', resizeAllGridItems)
   }, [])
 
-  // Load more items (infinite scroll with rolling window)
+  // Load more items (infinite scroll - just append, never remove)
   const loadMoreItems = () => {
     if (allItems.length === 0 || isLoadingMore) return
 
@@ -122,16 +121,8 @@ function Gallery() {
           })
         }
 
-        // Combine with previous items
-        const combined = [...prev, ...newBatch]
-
-        // If we exceed max items, remove oldest items from top
-        if (combined.length > MAX_ITEMS) {
-          const itemsToRemove = combined.length - MAX_ITEMS
-          return combined.slice(itemsToRemove)
-        }
-
-        return combined
+        // Just append - never remove items (lazy loading handles off-screen images)
+        return [...prev, ...newBatch]
       })
 
       setStartIndex(prev => prev + BATCH_SIZE)
@@ -152,7 +143,7 @@ function Gallery() {
       },
       {
         threshold: 0,
-        rootMargin: '800px' // Trigger earlier for seamless loading
+        rootMargin: '1200px' // Trigger well before end for seamless loading
       }
     )
 
@@ -161,15 +152,21 @@ function Gallery() {
     return () => observer.disconnect()
   }, [allItems, startIndex, isLoadingMore])
 
-  // Resize grid items when new items are added
+  // Resize ONLY new items when they're added
   useEffect(() => {
-    if (displayedItems.length > 0) {
+    if (displayedItems.length > 0 && displayedItems.length > lastLoadedCount.current) {
       // Small delay to let DOM update
       const timer = setTimeout(() => {
         if (!gridRef.current) return
-        const items = gridRef.current.querySelectorAll('.masonry-item')
-        items.forEach(item => resizeGridItem(item))
-      }, 100)
+        const allItemElements = gridRef.current.querySelectorAll('.masonry-item')
+
+        // Only resize the NEW items (from lastLoadedCount to current length)
+        const startIdx = lastLoadedCount.current
+        const newItems = Array.from(allItemElements).slice(startIdx)
+        newItems.forEach(item => resizeGridItem(item))
+
+        lastLoadedCount.current = displayedItems.length
+      }, 50)
 
       return () => clearTimeout(timer)
     }
@@ -232,6 +229,10 @@ function Gallery() {
                     src={`/${item.src}`}
                     alt={item.alt}
                     loading="lazy"
+                    style={{
+                      aspectRatio: item.aspectRatio || 'auto',
+                      minHeight: item.aspectRatio ? `${300 / parseFloat(item.aspectRatio || '1')}px` : '200px'
+                    }}
                     onLoad={(e) => handleImageLoad(e, item.sequenceIndex)}
                   />
                 )}
