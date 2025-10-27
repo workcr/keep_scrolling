@@ -229,10 +229,6 @@ function Gallery() {
                     src={`/${item.src}`}
                     alt={item.alt}
                     loading="lazy"
-                    style={{
-                      aspectRatio: item.aspectRatio || 'auto',
-                      minHeight: item.aspectRatio ? `${300 / parseFloat(item.aspectRatio || '1')}px` : '200px'
-                    }}
                     onLoad={(e) => handleImageLoad(e, item.sequenceIndex)}
                   />
                 )}
