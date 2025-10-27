@@ -9,13 +9,15 @@ function Gallery() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [loadedImages, setLoadedImages] = useState(new Set())
-  const [currentIndex, setCurrentIndex] = useState(0) // Track position in full list
+  const [startIndex, setStartIndex] = useState(0) // Where we are in the infinite sequence
+  const [isLoadingMore, setIsLoadingMore] = useState(false) // Prevent double-loading
   const gridRef = useRef(null)
   const sentinelRef = useRef(null)
+  const lastScrollTop = useRef(0)
 
-  const INITIAL_LOAD = 20 // Load first 20 items
+  const INITIAL_LOAD = 30 // Load first 30 items
   const BATCH_SIZE = 15 // Load 15 more when scrolling
-  const MAX_ITEMS = 50 // Keep max 50 items in DOM
+  const MAX_ITEMS = 60 // Keep max 60 items in DOM (rolling window)
 
   // Add autoplay parameters to video URL
   const getVideoUrl = (src) => {
@@ -32,9 +34,17 @@ function Gallery() {
         setLoading(true)
         const items = await fetchGalleryData()
         setAllItems(items)
-        // Load initial batch
-        setDisplayedItems(items.slice(0, Math.min(INITIAL_LOAD, items.length)))
-        setCurrentIndex(Math.min(INITIAL_LOAD, items.length))
+
+        // Load initial batch with infinite sequence metadata
+        const initialItems = []
+        for (let i = 0; i < INITIAL_LOAD; i++) {
+          initialItems.push({
+            ...items[i % items.length],
+            sequenceIndex: i // Track position in infinite sequence
+          })
+        }
+        setDisplayedItems(initialItems)
+        setStartIndex(INITIAL_LOAD)
         setError(null)
       } catch (err) {
         setError('Failed to load gallery. Please try again later.')
@@ -74,8 +84,8 @@ function Gallery() {
     item.style.gridRowEnd = `span ${rowSpan}`
   }
 
-  const handleImageLoad = (event, index) => {
-    setLoadedImages(prev => new Set([...prev, index]))
+  const handleImageLoad = (event, sequenceIndex) => {
+    setLoadedImages(prev => new Set([...prev, sequenceIndex]))
 
     // Calculate and set the row span for this item
     const item = event.target.parentElement
@@ -94,29 +104,40 @@ function Gallery() {
     return () => window.removeEventListener('resize', resizeAllGridItems)
   }, [])
 
-  // Load more items (infinite scroll)
+  // Load more items (infinite scroll with rolling window)
   const loadMoreItems = () => {
-    if (allItems.length === 0) return
+    if (allItems.length === 0 || isLoadingMore) return
 
-    const nextItems = []
-    let index = currentIndex
+    setIsLoadingMore(true)
 
-    // Load next batch, looping back to start if needed
-    for (let i = 0; i < BATCH_SIZE; i++) {
-      nextItems.push(allItems[index % allItems.length])
-      index++
-    }
+    requestAnimationFrame(() => {
+      setDisplayedItems(prev => {
+        // Create new batch with sequence tracking
+        const newBatch = []
+        for (let i = 0; i < BATCH_SIZE; i++) {
+          const seqIndex = startIndex + i
+          newBatch.push({
+            ...allItems[seqIndex % allItems.length],
+            sequenceIndex: seqIndex
+          })
+        }
 
-    setDisplayedItems(prev => {
-      const newItems = [...prev, ...nextItems]
-      // Keep only last MAX_ITEMS to prevent DOM bloat
-      if (newItems.length > MAX_ITEMS) {
-        return newItems.slice(newItems.length - MAX_ITEMS)
-      }
-      return newItems
+        // Combine with previous items
+        const combined = [...prev, ...newBatch]
+
+        // If we exceed max items, remove oldest items from top
+        if (combined.length > MAX_ITEMS) {
+          const itemsToRemove = combined.length - MAX_ITEMS
+          return combined.slice(itemsToRemove)
+        }
+
+        return combined
+      })
+
+      setStartIndex(prev => prev + BATCH_SIZE)
+
+      setTimeout(() => setIsLoadingMore(false), 100)
     })
-
-    setCurrentIndex(index)
   }
 
   // Set up Intersection Observer for infinite scroll
@@ -125,29 +146,34 @@ function Gallery() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
+        if (entries[0].isIntersecting && !isLoadingMore) {
           loadMoreItems()
         }
       },
-      { threshold: 0.1, rootMargin: '200px' } // Trigger 200px before reaching sentinel
+      {
+        threshold: 0,
+        rootMargin: '800px' // Trigger earlier for seamless loading
+      }
     )
 
     observer.observe(sentinelRef.current)
 
     return () => observer.disconnect()
-  }, [allItems, currentIndex, displayedItems])
+  }, [allItems, startIndex, isLoadingMore])
 
-  // Resize grid items when displayed items change
+  // Resize grid items when new items are added
   useEffect(() => {
     if (displayedItems.length > 0) {
-      // Wait for items to be rendered
-      setTimeout(() => {
+      // Small delay to let DOM update
+      const timer = setTimeout(() => {
         if (!gridRef.current) return
         const items = gridRef.current.querySelectorAll('.masonry-item')
         items.forEach(item => resizeGridItem(item))
       }, 100)
+
+      return () => clearTimeout(timer)
     }
-  }, [displayedItems])
+  }, [displayedItems.length])
 
   return (
     <div className="gallery-container">
@@ -173,9 +199,9 @@ function Gallery() {
           <div className="masonry-grid" ref={gridRef}>
             {displayedItems.map((item, index) => (
               <div
-                key={`${item.id}-${index}-${currentIndex}`}
-                className={`masonry-item ${isWideItem(index) ? 'wide' : ''} ${
-                  loadedImages.has(index) ? 'loaded' : ''
+                key={`item-${item.sequenceIndex}`}
+                className={`masonry-item ${isWideItem(item.sequenceIndex) ? 'wide' : ''} ${
+                  loadedImages.has(item.sequenceIndex) ? 'loaded' : ''
                 }`}
               >
                 {item.mediaType === 'video' ? (
@@ -187,9 +213,17 @@ function Gallery() {
                       allowFullScreen
                       title={item.alt}
                       onLoad={() => {
-                        setLoadedImages(prev => new Set([...prev, index]))
-                        const container = document.querySelector(`[data-index="${index}"]`)
-                        if (container) resizeGridItem(container.parentElement)
+                        setLoadedImages(prev => new Set([...prev, item.sequenceIndex]))
+                        // Resize this item after video loads
+                        setTimeout(() => {
+                          if (gridRef.current) {
+                            const items = gridRef.current.querySelectorAll('.masonry-item')
+                            items.forEach(gridItem => {
+                              const video = gridItem.querySelector('.video-container')
+                              if (video) resizeGridItem(gridItem)
+                            })
+                          }
+                        }, 100)
                       }}
                     ></iframe>
                   </div>
@@ -198,7 +232,7 @@ function Gallery() {
                     src={`/${item.src}`}
                     alt={item.alt}
                     loading="lazy"
-                    onLoad={(e) => handleImageLoad(e, index)}
+                    onLoad={(e) => handleImageLoad(e, item.sequenceIndex)}
                   />
                 )}
               </div>
