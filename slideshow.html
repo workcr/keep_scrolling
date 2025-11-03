@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Slideshow - Keep Scrolling</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #ui-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 20px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #sheets-url {
+            padding: 8px 12px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #111;
+            color: #fff;
+            width: 400px;
+            font-size: 13px;
+        }
+
+        #sheets-url:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button:active {
+            background: #3d8b40;
+        }
+
+        #status {
+            font-size: 12px;
+            color: #888;
+            margin-left: 10px;
+        }
+
+        #status.success {
+            color: #4CAF50;
+        }
+
+        #status.error {
+            color: #ff5252;
+        }
+
+        #media-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+
+        .media-item {
+            position: absolute;
+            max-width: 90vw;
+            max-height: 90vh;
+            object-fit: contain;
+        }
+
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-container">
+        <input
+            type="text"
+            id="sheets-url"
+            placeholder="Paste Google Sheets URL (must be published to web)"
+            value=""
+        />
+        <button id="load-btn">Load</button>
+        <span id="status"></span>
+    </div>
+
+    <div id="media-container"></div>
+
+    <div id="info">
+        <span id="item-counter">Item: 0/0</span> |
+        <span id="memory-info">Memory: 0 items</span>
+    </div>
+
+    <script>
+        // Configuration
+        const CONFIG = {
+            displayDuration: 500, // 0.5 seconds per item
+            maxItemsInMemory: 25, // Clean up after this many items
+            autoStartDelay: 1000 // Auto-start after 1 second if no sheets URL
+        };
+
+        // State
+        let mediaItems = [];
+        let currentIndex = 0;
+        let mediaElements = [];
+        let isPlaying = false;
+        let lastDisplayTime = 0;
+
+        // DOM elements
+        const sheetsUrlInput = document.getElementById('sheets-url');
+        const loadBtn = document.getElementById('load-btn');
+        const statusSpan = document.getElementById('status');
+        const mediaContainer = document.getElementById('media-container');
+        const itemCounter = document.getElementById('item-counter');
+        const memoryInfo = document.getElementById('memory-info');
+
+        // p5.js sketch
+        const sketch = (p) => {
+            p.setup = () => {
+                // Create canvas covering full window
+                p.createCanvas(p.windowWidth, p.windowHeight);
+                p.background(0);
+            };
+
+            p.draw = () => {
+                // Subtle background effect - dark with slight noise
+                p.background(0, 0, 0, 5);
+
+                // Handle slideshow timing
+                if (isPlaying && mediaItems.length > 0) {
+                    if (p.millis() - lastDisplayTime >= CONFIG.displayDuration) {
+                        showNextItem();
+                        lastDisplayTime = p.millis();
+                    }
+                }
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+            };
+        };
+
+        // Initialize p5.js
+        new p5(sketch);
+
+        // Detect if URL is image or video based on extension
+        function detectMediaType(url) {
+            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'];
+            const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov'];
+
+            const lowerUrl = url.toLowerCase();
+
+            if (imageExtensions.some(ext => lowerUrl.includes(ext))) {
+                return 'image';
+            }
+            if (videoExtensions.some(ext => lowerUrl.includes(ext))) {
+                return 'video';
+            }
+
+            // Default to image if can't detect
+            return 'image';
+        }
+
+        // Extract Google Sheets ID from URL
+        function extractSheetsId(url) {
+            const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+            return match ? match[1] : null;
+        }
+
+        // Load data from Google Sheets
+        async function loadFromGoogleSheets(url) {
+            try {
+                statusSpan.textContent = 'Loading...';
+                statusSpan.className = '';
+
+                const sheetsId = extractSheetsId(url);
+                if (!sheetsId) {
+                    throw new Error('Invalid Google Sheets URL');
+                }
+
+                // Use the published CSV endpoint
+                // User must publish the sheet to web first
+                const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetsId}/export?format=csv`;
+
+                const response = await fetch(csvUrl);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch sheet. Make sure it is published to web.');
+                }
+
+                const csvText = await response.text();
+                const rows = parseCSV(csvText);
+
+                // Extract URLs from first column, skip header
+                mediaItems = rows
+                    .slice(1) // Skip header row
+                    .map(row => row[0]) // Get first column
+                    .filter(url => url && url.trim()) // Remove empty
+                    .map(url => ({
+                        url: url.trim(),
+                        type: detectMediaType(url.trim())
+                    }));
+
+                if (mediaItems.length === 0) {
+                    throw new Error('No media URLs found in sheet');
+                }
+
+                statusSpan.textContent = `✓ Loaded ${mediaItems.length} items`;
+                statusSpan.className = 'success';
+
+                startSlideshow();
+
+            } catch (error) {
+                console.error('Error loading Google Sheets:', error);
+                statusSpan.textContent = `✗ ${error.message}`;
+                statusSpan.className = 'error';
+            }
+        }
+
+        // Simple CSV parser
+        function parseCSV(text) {
+            const rows = [];
+            const lines = text.split('\n');
+
+            for (let line of lines) {
+                if (line.trim()) {
+                    // Simple split by comma (doesn't handle quotes, but good enough for URLs)
+                    rows.push(line.split(',').map(cell => cell.trim()));
+                }
+            }
+
+            return rows;
+        }
+
+        // Create media element (image or video)
+        function createMediaElement(item) {
+            let element;
+
+            if (item.type === 'video') {
+                element = document.createElement('video');
+                element.src = item.url;
+                element.autoplay = true;
+                element.loop = true;
+                element.muted = true;
+                element.playsInline = true;
+
+                // Start playing
+                element.play().catch(err => {
+                    console.warn('Video autoplay failed:', err);
+                });
+            } else {
+                element = document.createElement('img');
+                element.src = item.url;
+            }
+
+            element.className = 'media-item';
+
+            return element;
+        }
+
+        // Display next item
+        function showNextItem() {
+            if (mediaItems.length === 0) return;
+
+            // Create and add new media element
+            const item = mediaItems[currentIndex];
+            const element = createMediaElement(item);
+
+            mediaContainer.appendChild(element);
+            mediaElements.push(element);
+
+            // Update counter
+            itemCounter.textContent = `Item: ${currentIndex + 1}/${mediaItems.length}`;
+            memoryInfo.textContent = `Memory: ${mediaElements.length} items`;
+
+            // Memory management: remove old items
+            if (mediaElements.length > CONFIG.maxItemsInMemory) {
+                const toRemove = mediaElements.shift();
+                if (toRemove && toRemove.parentNode) {
+                    toRemove.parentNode.removeChild(toRemove);
+                }
+                memoryInfo.textContent = `Memory: ${mediaElements.length} items`;
+            }
+
+            // Move to next item (loop back to start)
+            currentIndex = (currentIndex + 1) % mediaItems.length;
+        }
+
+        // Start the slideshow
+        function startSlideshow() {
+            if (isPlaying) return;
+
+            isPlaying = true;
+            currentIndex = 0;
+            lastDisplayTime = 0; // Reset timer
+
+            // Show first item immediately
+            showNextItem();
+        }
+
+        // Stop the slideshow
+        function stopSlideshow() {
+            isPlaying = false;
+        }
+
+        // Event listeners
+        loadBtn.addEventListener('click', () => {
+            const url = sheetsUrlInput.value.trim();
+            if (url) {
+                stopSlideshow();
+                mediaElements.forEach(el => {
+                    if (el.parentNode) el.parentNode.removeChild(el);
+                });
+                mediaElements = [];
+                loadFromGoogleSheets(url);
+            }
+        });
+
+        sheetsUrlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loadBtn.click();
+            }
+        });
+
+        // Auto-start with demo data if no URL provided
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (!sheetsUrlInput.value.trim()) {
+                    // Demo data
+                    mediaItems = [
+                        { url: './assets/dtms_portfolio_10-640.webp', type: 'image' },
+                        { url: './assets/dtms_portfolio_02-960p.gif', type: 'image' },
+                        { url: './assets/SJC_Scene-03-Closer0001 1-7-960.webp', type: 'image' },
+                        { url: './assets/Guarana_1920x1080_Latas-640p.gif', type: 'image' },
+                        { url: './assets/EQ_Amanheceu_01-960.webp', type: 'image' },
+                        { url: './assets/OW_Poster_01.webp', type: 'image' },
+                        { url: './assets/Square 16-1600.webp', type: 'image' },
+                        { url: './assets/Guarana_White_Bus_Stop_Raça.webp', type: 'image' },
+                    ];
+
+                    statusSpan.textContent = `✓ Demo mode: ${mediaItems.length} items`;
+                    statusSpan.className = 'success';
+                    startSlideshow();
+                }
+            }, CONFIG.autoStartDelay);
+        });
+    </script>
+</body>
+</html>
