@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLoaderData } from "react-router-dom";
+import { Link, useLoaderData, useLocation } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
 
 function readSearchFilters() {
@@ -49,11 +49,15 @@ function buildBatch(source, start, count) {
 
 export default function GalleryPage() {
   const { items } = useLoaderData();
+  const location = useLocation();
   const [filters, setFilters] = useState(readSearchFilters());
   const [visibleItems, setVisibleItems] = useState([]);
   const gridRef = useRef(null);
   const sentinelRef = useRef(null);
   const isAppendingRef = useRef(false);
+  const hasRestoredRef = useRef(false);
+  const scrollKey = `gallery-scroll:${location.pathname}${location.search}`;
+  const visibleCountKey = `${scrollKey}:count`;
 
   useEffect(() => {
     const onPop = () => setFilters(readSearchFilters());
@@ -77,8 +81,54 @@ export default function GalleryPage() {
   }, [items, filters]);
 
   useEffect(() => {
-    setVisibleItems(buildBatch(filtered, 0, Math.min(INITIAL_BATCH, filtered.length)));
-  }, [filtered]);
+    hasRestoredRef.current = false;
+  }, [scrollKey]);
+
+  useEffect(() => {
+    const key = scrollKey;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        window.sessionStorage.setItem(key, String(window.scrollY));
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [scrollKey]);
+
+  useEffect(() => {
+    const storedCount = Number.parseInt(window.sessionStorage.getItem(visibleCountKey) || "", 10);
+    const count = Number.isFinite(storedCount) ? Math.max(INITIAL_BATCH, Math.min(storedCount, 500)) : INITIAL_BATCH;
+    setVisibleItems(buildBatch(filtered, 0, Math.min(count, Math.max(count, filtered.length))));
+  }, [filtered, visibleCountKey]);
+
+  useEffect(() => {
+    if (!visibleItems.length) return;
+    window.sessionStorage.setItem(visibleCountKey, String(visibleItems.length));
+  }, [visibleItems.length, visibleCountKey]);
+
+  useEffect(() => {
+    if (hasRestoredRef.current || !visibleItems.length) return;
+    const saved = window.sessionStorage.getItem(scrollKey);
+    if (!saved) {
+      hasRestoredRef.current = true;
+      return;
+    }
+    const y = Number.parseFloat(saved);
+    if (!Number.isFinite(y)) {
+      hasRestoredRef.current = true;
+      return;
+    }
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: y, left: 0, behavior: "auto" });
+      hasRestoredRef.current = true;
+    });
+  }, [scrollKey, visibleItems.length]);
 
   const appendBatch = useCallback(() => {
     if (!filtered.length || isAppendingRef.current) return;
@@ -169,7 +219,7 @@ export default function GalleryPage() {
   }, [visibleItems]);
 
   return (
-    <div style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 64 }}>
+    <div style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 0 }}>
       <div className="gallery-grid" ref={gridRef}>
         {visibleItems.map((item, index) => {
           const slug = toSlug(item.project);

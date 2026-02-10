@@ -6,6 +6,7 @@ const closeIcon =
 export default function NavBar() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const isGalleryRoute = location.pathname === "/gallery";
   const activeFilter =
     searchParams.get("client") ||
     searchParams.get("project") ||
@@ -23,12 +24,12 @@ export default function NavBar() {
   }
 
   return (
-    <nav>
+    <nav className={isGalleryRoute ? "nav-sticky" : undefined}>
       <div className="flex gap-5 lg:gap-28 w-full">
         <Link to="/">R–––M</Link>
         {location.pathname.includes("project") ? (
-          <Link to="#" className="underline">
-            Project
+          <Link to="/gallery">
+            Gallery
           </Link>
         ) : (
           <>
