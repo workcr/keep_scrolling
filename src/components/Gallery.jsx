@@ -200,6 +200,9 @@ function Gallery() {
                 className={`masonry-item ${isWideItem(item.sequenceIndex) ? 'wide' : ''} ${
                   loadedImages.has(item.sequenceIndex) ? 'loaded' : ''
                 }`}
+                role="listitem"
+                aria-label={item.alt || 'Gallery item'}
+                tabIndex={0}
               >
                 {item.mediaType === 'video' ? (
                   <div className="video-container" style={{ aspectRatio: item.aspectRatio || '16 / 9' }}>
