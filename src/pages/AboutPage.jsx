@@ -3,7 +3,7 @@ export default function AboutPage() {
     <section className="about-page">
       <div className="about-hero">
         <img
-          src="/src/assets/rmnds1_by%20Izique_RedOrange.webp"
+          src="/assets/rmnds1_by%20Izique_RedOrange.webp"
           alt="Portrait with red background"
           className="about-hero-image"
         />
@@ -39,7 +39,7 @@ export default function AboutPage() {
       </div>
 
       <div className="about-footer-art" aria-hidden="true">
-        <img src="/src/assets/thanks-footer-BMDZGwil.png" alt="" />
+        <img src="/assets/thanks-footer-BMDZGwil.png" alt="" />
       </div>
     </section>
   );

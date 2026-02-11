@@ -1,4 +1,6 @@
-const API_BASE = "https://api.sheety.co/55ad31708c31d543a624b88053f567d9/backend/";
+const DEFAULT_API_BASE = "https://api.sheety.co/55ad31708c31d543a624b88053f567d9/backend/";
+const configuredBase = String(import.meta.env.VITE_API_BASE || DEFAULT_API_BASE).trim();
+const API_BASE = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
 
 function normalizeItem(item) {
   return {
@@ -65,4 +67,3 @@ export async function projectLoader({ params }) {
 
   return { project: result };
 }
-

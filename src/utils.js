@@ -23,7 +23,7 @@ export function resolveMediaUrl(item) {
   }
 
   const baseName = String(namedCandidates[0]).trim();
-  return `/src/assets/${baseName}`;
+  return `/assets/${baseName}`;
 }
 
 export function inferMediaType(item) {

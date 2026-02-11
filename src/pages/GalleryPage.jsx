@@ -52,6 +52,7 @@ export default function GalleryPage() {
   const location = useLocation();
   const [filters, setFilters] = useState(readSearchFilters());
   const [visibleItems, setVisibleItems] = useState([]);
+  const [scrollY, setScrollY] = useState(0);
   const gridRef = useRef(null);
   const sentinelRef = useRef(null);
   const isAppendingRef = useRef(false);
@@ -91,6 +92,7 @@ export default function GalleryPage() {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
+        setScrollY(window.scrollY);
         window.sessionStorage.setItem(key, String(window.scrollY));
       });
     };
@@ -148,7 +150,7 @@ export default function GalleryPage() {
         if (!entry?.isIntersecting) return;
         appendBatch();
       },
-      { root: null, threshold: 0, rootMargin: "800px" }
+      { root: null, threshold: 0, rootMargin: "1400px" }
     );
 
     observer.observe(sentinelRef.current);
@@ -218,6 +220,12 @@ export default function GalleryPage() {
     return () => observer.disconnect();
   }, [visibleItems]);
 
+  const eagerVideoCount = useMemo(() => {
+    const base = 36;
+    const growth = Math.floor(scrollY / 700) * 8;
+    return Math.min(visibleItems.length, base + growth);
+  }, [scrollY, visibleItems.length]);
+
   return (
     <div style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 0 }}>
       <div className="gallery-grid" ref={gridRef}>
@@ -225,13 +233,19 @@ export default function GalleryPage() {
           const slug = toSlug(item.project);
           const key = `${item.id ?? slug}-${item.__sequenceIndex ?? index}`;
           const twoCol = isTwoColItem(item);
+          const mediaType = String(item["data-media-type"] || "").toLowerCase();
+          const eagerVideo = mediaType === "video" && index < eagerVideoCount;
           return (
             <Link
               key={key}
               to={`/project/${slug}`}
               className={twoCol ? "gallery-grid-item gallery-grid-item--2col" : "gallery-grid-item"}
             >
-              <MediaCard {...item} />
+              <MediaCard
+                {...item}
+                loading={eagerVideo ? "eager" : "lazy"}
+                quality={mediaType === "video" ? "auto" : undefined}
+              />
             </Link>
           );
         })}

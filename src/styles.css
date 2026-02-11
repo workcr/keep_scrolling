@@ -7,6 +7,60 @@
   overflow-x: hidden;
 }
 
+.home-scroll-container {
+  position: relative;
+  background: #ffffff;
+}
+
+.home-stage {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.home-scroll-prompt {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.home-wordmark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 0;
+}
+
+.home-item-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.home-item-shell {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  will-change: transform, opacity;
+}
+
+.home-text-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .project article {
   margin: 0;
 }

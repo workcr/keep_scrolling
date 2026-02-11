@@ -14,7 +14,7 @@ function normalizeAssetUrl(value) {
   if (!value) return "";
   if (isAbsoluteUrl(value)) return encodeAssetPath(value);
   if (value.startsWith("/")) return encodeAssetPath(value);
-  if (value.startsWith("assets/")) return encodeAssetPath(`/src/${value}`);
+  if (value.startsWith("assets/")) return encodeAssetPath(`/${value}`);
   return encodeAssetPath(`/${value}`);
 }
 
@@ -29,7 +29,7 @@ function normalizeSrcSet(value) {
       const hasDescriptor = /^(?:\d+w|\d+(?:\.\d+)?x)$/.test(maybeDescriptor || "");
       const src = hasDescriptor ? parts.slice(0, -1).join(" ") : parts.join(" ");
       const descriptor = hasDescriptor ? maybeDescriptor : "";
-      const normalized = src.startsWith("assets/") ? `/src/${src}` : src;
+      const normalized = src.startsWith("assets/") ? `/${src}` : src;
       const url = encodeAssetPath(
         normalized.startsWith("/") || isAbsoluteUrl(normalized) ? normalized : `/${normalized}`
       );
@@ -63,13 +63,15 @@ export default function MediaCard(item) {
   const mediaType = String(item["data-media-type"] || item.mediaType || "").toLowerCase();
   const src = normalizeAssetUrl(item.src);
   const srcSet = normalizeSrcSet(item.srcset);
+  const loadingMode = item.loading === "eager" ? "eager" : "lazy";
   const sharedStyle = { width: "100%", height: "auto", display: "block", objectFit: "contain" };
 
   if (!item.src || errored) return null;
 
   if (mediaType === "video") {
     const paddingBottom = aspectRatioPadding(item);
-    const url = `${src}&badge=0&autopause=0&player_id=0&app_id=58479&loop=1&controls=0&autoplay=1&muted=1&quality=1080p`;
+    const requestedQuality = String(item.quality || "1080p");
+    const url = `${src}&badge=0&autopause=0&player_id=0&app_id=58479&loop=1&controls=0&autoplay=1&muted=1&quality=${encodeURIComponent(requestedQuality)}`;
     return (
       <div style={{ position: "relative", width: "100%", height: 0, paddingBottom: `${paddingBottom}%` }}>
         <iframe
@@ -77,7 +79,7 @@ export default function MediaCard(item) {
           title={item.alt || item.id}
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0, display: "block" }}
           allow="autoplay; fullscreen; picture-in-picture"
-          loading="lazy"
+          loading={loadingMode}
         />
       </div>
     );
@@ -89,7 +91,7 @@ export default function MediaCard(item) {
         src={src}
         srcSet={srcSet}
         alt={item.alt || ""}
-        loading="lazy"
+        loading={loadingMode}
         style={sharedStyle}
         onError={() => setErrored(true)}
       />

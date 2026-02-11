@@ -11,7 +11,7 @@ describe("utils", () => {
   });
 
   it("falls back to source asset path when no explicit url exists", () => {
-    expect(resolveMediaUrl({ title: "Poster-001.png" })).toBe("/src/assets/Poster-001.png");
+    expect(resolveMediaUrl({ title: "Poster-001.png" })).toBe("/assets/Poster-001.png");
   });
 
   it("infers video type from data-media-type", () => {
