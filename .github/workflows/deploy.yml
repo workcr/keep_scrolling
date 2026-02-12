@@ -51,7 +51,7 @@ jobs:
         with:
           server: ${{ secrets.HOSTINGER_STAGING_HOST || vars.HOSTINGER_STAGING_HOST || 'ftp://195.35.39.18' }}
           username: ${{ secrets.HOSTINGER_STAGING_USER || secrets.HOSTINGER_STAGING_USERNAME || vars.HOSTINGER_STAGING_USER || vars.HOSTINGER_STAGING_USERNAME || 'u778371618.keep-scrolling.com' }}
-          password: ${{ secrets.HOSTINGER_STAGING_PASSWORD || vars.HOSTINGER_STAGING_PASSWORD }}
+          password: ${{ secrets.HOSTINGER_STAGING_PASSWORD || vars.HOSTINGER_STAGING_PASSWORD || secrets.HOSTINGER_PASSWORD || vars.HOSTINGER_PASSWORD || secrets.FTP_PASSWORD || vars.FTP_PASSWORD }}
           protocol: ${{ secrets.HOSTINGER_STAGING_PROTOCOL || vars.HOSTINGER_STAGING_PROTOCOL || 'ftps' }}
           port: ${{ secrets.HOSTINGER_STAGING_PORT || vars.HOSTINGER_STAGING_PORT || '21' }}
           local-dir: ./deploy_bundle/
@@ -102,7 +102,7 @@ jobs:
         with:
           server: ${{ secrets.HOSTINGER_PROD_HOST || vars.HOSTINGER_PROD_HOST || 'ftp://195.35.39.18' }}
           username: ${{ secrets.HOSTINGER_PROD_USER || secrets.HOSTINGER_PROD_USERNAME || vars.HOSTINGER_PROD_USER || vars.HOSTINGER_PROD_USERNAME || 'u778371618.keep-scrolling.com' }}
-          password: ${{ secrets.HOSTINGER_PROD_PASSWORD || vars.HOSTINGER_PROD_PASSWORD }}
+          password: ${{ secrets.HOSTINGER_PROD_PASSWORD || vars.HOSTINGER_PROD_PASSWORD || secrets.HOSTINGER_PASSWORD || vars.HOSTINGER_PASSWORD || secrets.FTP_PASSWORD || vars.FTP_PASSWORD }}
           protocol: ${{ secrets.HOSTINGER_PROD_PROTOCOL || vars.HOSTINGER_PROD_PROTOCOL || 'ftps' }}
           port: ${{ secrets.HOSTINGER_PROD_PORT || vars.HOSTINGER_PROD_PORT || '21' }}
           local-dir: ./deploy_bundle/
