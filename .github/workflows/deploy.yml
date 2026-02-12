@@ -38,23 +38,23 @@ jobs:
           cp -R dist/. deploy_bundle/
           cat > deploy_bundle/.htaccess <<'HTACCESS'
           RewriteEngine On
-          RewriteBase /
+          RewriteBase /staging/
           RewriteRule ^index\.html$ - [L]
           RewriteCond %{REQUEST_FILENAME} !-f
           RewriteCond %{REQUEST_FILENAME} !-d
-          RewriteRule . /index.html [L]
+          RewriteRule . /staging/index.html [L]
           HTACCESS
 
       - name: Deploy to Hostinger (staging)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.HOSTINGER_STAGING_HOST }}
-          username: ${{ secrets.HOSTINGER_STAGING_USER }}
-          password: ${{ secrets.HOSTINGER_STAGING_PASSWORD }}
-          protocol: ${{ secrets.HOSTINGER_STAGING_PROTOCOL }}
-          port: ${{ secrets.HOSTINGER_STAGING_PORT }}
+          server: ${{ secrets.HOSTINGER_STAGING_HOST || vars.HOSTINGER_STAGING_HOST }}
+          username: ${{ secrets.HOSTINGER_STAGING_USER || secrets.HOSTINGER_STAGING_USERNAME || vars.HOSTINGER_STAGING_USER || vars.HOSTINGER_STAGING_USERNAME }}
+          password: ${{ secrets.HOSTINGER_STAGING_PASSWORD || vars.HOSTINGER_STAGING_PASSWORD }}
+          protocol: ${{ secrets.HOSTINGER_STAGING_PROTOCOL || vars.HOSTINGER_STAGING_PROTOCOL }}
+          port: ${{ secrets.HOSTINGER_STAGING_PORT || vars.HOSTINGER_STAGING_PORT }}
           local-dir: ./deploy_bundle/
-          server-dir: ${{ secrets.HOSTINGER_STAGING_PATH }}
+          server-dir: ${{ secrets.HOSTINGER_STAGING_PATH || vars.HOSTINGER_STAGING_PATH }}
           exclude: |
             **/.DS_Store
             **/.git*
@@ -98,13 +98,13 @@ jobs:
       - name: Deploy to Hostinger (production)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.HOSTINGER_PROD_HOST }}
-          username: ${{ secrets.HOSTINGER_PROD_USER }}
-          password: ${{ secrets.HOSTINGER_PROD_PASSWORD }}
-          protocol: ${{ secrets.HOSTINGER_PROD_PROTOCOL }}
-          port: ${{ secrets.HOSTINGER_PROD_PORT }}
+          server: ${{ secrets.HOSTINGER_PROD_HOST || vars.HOSTINGER_PROD_HOST }}
+          username: ${{ secrets.HOSTINGER_PROD_USER || secrets.HOSTINGER_PROD_USERNAME || vars.HOSTINGER_PROD_USER || vars.HOSTINGER_PROD_USERNAME }}
+          password: ${{ secrets.HOSTINGER_PROD_PASSWORD || vars.HOSTINGER_PROD_PASSWORD }}
+          protocol: ${{ secrets.HOSTINGER_PROD_PROTOCOL || vars.HOSTINGER_PROD_PROTOCOL }}
+          port: ${{ secrets.HOSTINGER_PROD_PORT || vars.HOSTINGER_PROD_PORT }}
           local-dir: ./deploy_bundle/
-          server-dir: ${{ secrets.HOSTINGER_PROD_PATH }}
+          server-dir: ${{ secrets.HOSTINGER_PROD_PATH || vars.HOSTINGER_PROD_PATH }}
           exclude: |
             **/.DS_Store
             **/.git*
