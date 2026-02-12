@@ -10,12 +10,24 @@ function encodeAssetPath(value) {
   return encodeURI(decoded);
 }
 
+function rewriteToRootAssets(value) {
+  if (!value) return "";
+  const normalized = String(value).replace(/\\/g, "/");
+
+  if (isAbsoluteUrl(normalized)) return normalized;
+  if (normalized.startsWith("/staging/assets/")) return normalized.replace(/^\/staging\/assets\//, "/assets/");
+  if (normalized.startsWith("staging/assets/")) return `/${normalized.replace(/^staging\/assets\//, "assets/")}`;
+  if (normalized.startsWith("./assets/")) return `/${normalized.replace(/^\.\//, "")}`;
+  if (normalized.startsWith("assets/")) return `/${normalized}`;
+  return normalized;
+}
+
 function normalizeAssetUrl(value) {
   if (!value) return "";
-  if (isAbsoluteUrl(value)) return encodeAssetPath(value);
-  if (value.startsWith("/")) return encodeAssetPath(value);
-  if (value.startsWith("assets/")) return encodeAssetPath(`/${value}`);
-  return encodeAssetPath(`/${value}`);
+  const rewritten = rewriteToRootAssets(value);
+  if (isAbsoluteUrl(rewritten)) return encodeAssetPath(rewritten);
+  if (rewritten.startsWith("/")) return encodeAssetPath(rewritten);
+  return encodeAssetPath(`/${rewritten}`);
 }
 
 function normalizeSrcSet(value) {
@@ -29,7 +41,7 @@ function normalizeSrcSet(value) {
       const hasDescriptor = /^(?:\d+w|\d+(?:\.\d+)?x)$/.test(maybeDescriptor || "");
       const src = hasDescriptor ? parts.slice(0, -1).join(" ") : parts.join(" ");
       const descriptor = hasDescriptor ? maybeDescriptor : "";
-      const normalized = src.startsWith("assets/") ? `/${src}` : src;
+      const normalized = rewriteToRootAssets(src);
       const url = encodeAssetPath(
         normalized.startsWith("/") || isAbsoluteUrl(normalized) ? normalized : `/${normalized}`
       );
