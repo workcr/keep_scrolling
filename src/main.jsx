@@ -11,41 +11,46 @@ import AboutPage from "./pages/AboutPage";
 import NotFound from "./pages/NotFound";
 import "./styles.css";
 
-const router = createBrowserRouter([
+const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      element: <MainLayout />,
+      children: [
+        {
+          index: true,
+          element: <Home />,
+          errorElement: <NotFound />
+        },
+        {
+          path: "/filters",
+          element: <FiltersPage />,
+          loader: filtersLoader,
+          errorElement: <NotFound />
+        },
+        {
+          path: "/gallery",
+          element: <GalleryPage />,
+          loader: filtersLoader,
+          errorElement: <NotFound />
+        },
+        {
+          path: "/project/:id",
+          element: <ProjectPage />,
+          loader: projectLoader,
+          errorElement: <NotFound />
+        },
+        {
+          path: "/about",
+          element: <AboutPage />
+        }
+      ]
+    }
+  ],
   {
-    path: "/",
-    element: <MainLayout />,
-    children: [
-      {
-        index: true,
-        element: <Home />,
-        errorElement: <NotFound />
-      },
-      {
-        path: "/filters",
-        element: <FiltersPage />,
-        loader: filtersLoader,
-        errorElement: <NotFound />
-      },
-      {
-        path: "/gallery",
-        element: <GalleryPage />,
-        loader: filtersLoader,
-        errorElement: <NotFound />
-      },
-      {
-        path: "/project/:id",
-        element: <ProjectPage />,
-        loader: projectLoader,
-        errorElement: <NotFound />
-      },
-      {
-        path: "/about",
-        element: <AboutPage />
-      }
-    ]
+    basename: import.meta.env.BASE_URL
   }
-]);
+);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
