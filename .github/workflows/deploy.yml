@@ -1,0 +1,113 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (staging)
+        run: npm run build:staging
+
+      - name: Prepare deploy bundle
+        run: |
+          rm -rf deploy_bundle
+          mkdir -p deploy_bundle/assets
+          cp -R dist/. deploy_bundle/
+          cp -R src/assets/. deploy_bundle/assets/
+          cat > deploy_bundle/.htaccess <<'HTACCESS'
+          RewriteEngine On
+          RewriteBase /
+          RewriteRule ^index\.html$ - [L]
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule . /index.html [L]
+          HTACCESS
+
+      - name: Deploy to Hostinger (staging)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_STAGING_HOST }}
+          username: ${{ secrets.HOSTINGER_STAGING_USER }}
+          password: ${{ secrets.HOSTINGER_STAGING_PASSWORD }}
+          protocol: ${{ secrets.HOSTINGER_STAGING_PROTOCOL }}
+          port: ${{ secrets.HOSTINGER_STAGING_PORT }}
+          local-dir: ./deploy_bundle/
+          server-dir: ${{ secrets.HOSTINGER_STAGING_PATH }}
+          exclude: |
+            **/.DS_Store
+            **/.git*
+            **/node_modules/**
+            **/*.mov
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (production)
+        run: npm run build:prod
+
+      - name: Prepare deploy bundle
+        run: |
+          rm -rf deploy_bundle
+          mkdir -p deploy_bundle/assets
+          cp -R dist/. deploy_bundle/
+          cp -R src/assets/. deploy_bundle/assets/
+          cat > deploy_bundle/.htaccess <<'HTACCESS'
+          RewriteEngine On
+          RewriteBase /
+          RewriteRule ^index\.html$ - [L]
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule . /index.html [L]
+          HTACCESS
+
+      - name: Deploy to Hostinger (production)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_PROD_HOST }}
+          username: ${{ secrets.HOSTINGER_PROD_USER }}
+          password: ${{ secrets.HOSTINGER_PROD_PASSWORD }}
+          protocol: ${{ secrets.HOSTINGER_PROD_PROTOCOL }}
+          port: ${{ secrets.HOSTINGER_PROD_PORT }}
+          local-dir: ./deploy_bundle/
+          server-dir: ${{ secrets.HOSTINGER_PROD_PATH }}
+          exclude: |
+            **/.DS_Store
+            **/.git*
+            **/node_modules/**
+            **/*.mov
