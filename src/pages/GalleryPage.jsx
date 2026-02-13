@@ -228,6 +228,11 @@ export default function GalleryPage() {
 
   return (
     <div style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 0 }}>
+      {filtered.length === 0 ? (
+        <div className="my-4 rounded bg-red-50 p-3 text-sm text-red-700">
+          No gallery items available right now. Please try again later.
+        </div>
+      ) : null}
       <div className="gallery-grid" ref={gridRef}>
         {visibleItems.map((item, index) => {
           const slug = toSlug(item.project);

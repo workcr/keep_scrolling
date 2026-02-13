@@ -24,6 +24,11 @@ export default function FiltersPage() {
         {!items && (
           <div className="my-4 rounded bg-red-50 p-3 text-sm text-red-700">Error loading filters</div>
         )}
+        {items?.length === 0 && (
+          <div className="my-4 rounded bg-red-50 p-3 text-sm text-red-700">
+            No filter data available right now. Please try again later.
+          </div>
+        )}
         <div className="grid grid-cols-3 lg:grid-cols-8 px-8 space-y-16 lg:space-y-0">
           <div>Client</div>
           <div className="col-span-2 lg:col-span-1">
