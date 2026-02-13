@@ -3,9 +3,7 @@ import localScrollItems from "./data/scroll-items.json";
 const DEFAULT_API_BASE = "https://api.sheety.co/55ad31708c31d543a624b88053f567d9/backend/";
 const configuredBase = String(import.meta.env.VITE_API_BASE || DEFAULT_API_BASE).trim();
 const API_BASE = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
-const REQUEST_TIMEOUT_MS = 2500;
-const REMOTE_FAIL_FAST_WINDOW_MS = 60_000;
-let lastRemoteFailureAt = 0;
+const REQUEST_TIMEOUT_MS = 8000;
 
 function pick(...values) {
   for (const value of values) {
@@ -71,37 +69,23 @@ async function fetchJsonWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
 }
 
 export async function fetchItems() {
-  const now = Date.now();
-  if (lastRemoteFailureAt && now - lastRemoteFailureAt < REMOTE_FAIL_FAST_WINDOW_MS) {
-    return fallbackItems();
-  }
-
   try {
     const data = await fetchJsonWithTimeout(`${API_BASE}sheet1`);
-    lastRemoteFailureAt = 0;
     return (data.sheet1 || [])
       .map(normalizeItem)
       .filter((item) => String(item.mediaType || item["data-media-type"] || "").toLowerCase() !== "text");
   } catch (error) {
     console.error("Error fetching items:", error);
-    lastRemoteFailureAt = Date.now();
     return fallbackItems();
   }
 }
 
 export async function fetchProjects() {
-  const now = Date.now();
-  if (lastRemoteFailureAt && now - lastRemoteFailureAt < REMOTE_FAIL_FAST_WINDOW_MS) {
-    return fallbackProjectsFromItems(fallbackItems());
-  }
-
   try {
     const data = await fetchJsonWithTimeout(`${API_BASE}projects`);
-    lastRemoteFailureAt = 0;
     return data.projects || [];
   } catch (error) {
     console.error("Error fetching projects:", error);
-    lastRemoteFailureAt = Date.now();
     return fallbackProjectsFromItems(fallbackItems());
   }
 }
