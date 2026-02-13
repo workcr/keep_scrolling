@@ -1,0 +1,29 @@
+{
+  "name": "keep_scrolling-reconstructed",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:staging": "vite build --mode staging --base=/staging/",
+    "build:prod": "vite build --mode production",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ci": "vitest run --reporter=verbose"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.2",
+    "swiper": "^11.2.10"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^28.0.0",
+    "vite": "^5.4.11",
+    "vitest": "^4.0.18"
+  }
+}

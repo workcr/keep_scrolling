@@ -1,0 +1,114 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (staging)
+        run: npm run build:staging
+
+      - name: Prepare deploy bundle
+        run: |
+          rm -rf deploy_bundle
+          mkdir -p deploy_bundle
+          cp -R dist/. deploy_bundle/
+          cat > deploy_bundle/.htaccess <<'HTACCESS'
+          RewriteEngine On
+          RewriteBase /staging/
+          RewriteRule ^index\.html$ - [L]
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule . /staging/index.html [L]
+          HTACCESS
+
+      - name: Deploy to Hostinger (staging)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ vars.HOSTINGER_STAGING_HOST || secrets.HOSTINGER_STAGING_HOST || '195.35.39.18' }}
+          username: ${{ vars.HOSTINGER_STAGING_USER || vars.HOSTINGER_STAGING_USERNAME || secrets.HOSTINGER_STAGING_USER || secrets.HOSTINGER_STAGING_USERNAME || 'u778371618.keep-scrolling.com' }}
+          password: ${{ secrets.HOSTINGER_STAGING_PASSWORD || vars.HOSTINGER_STAGING_PASSWORD || secrets.HOSTINGER_PASSWORD || vars.HOSTINGER_PASSWORD || secrets.FTP_PASSWORD || vars.FTP_PASSWORD }}
+          protocol: ${{ vars.HOSTINGER_STAGING_PROTOCOL || secrets.HOSTINGER_STAGING_PROTOCOL || 'ftps' }}
+          port: ${{ vars.HOSTINGER_STAGING_PORT || secrets.HOSTINGER_STAGING_PORT || '21' }}
+          local-dir: ./deploy_bundle/
+          server-dir: ${{ vars.HOSTINGER_STAGING_PATH || secrets.HOSTINGER_STAGING_PATH || '/public_html/staging/' }}
+          exclude: |
+            **/.DS_Store
+            **/.git*
+            **/node_modules/**
+            **/*.mov
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (production)
+        run: npm run build:prod
+
+      - name: Prepare deploy bundle
+        run: |
+          rm -rf deploy_bundle
+          mkdir -p deploy_bundle/assets
+          cp -R dist/. deploy_bundle/
+          cp -R src/assets/. deploy_bundle/assets/
+          cat > deploy_bundle/.htaccess <<'HTACCESS'
+          RewriteEngine On
+          RewriteBase /
+          RewriteRule ^index\.html$ - [L]
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule . /index.html [L]
+          HTACCESS
+
+      - name: Deploy to Hostinger (production)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ vars.HOSTINGER_PROD_HOST || secrets.HOSTINGER_PROD_HOST || '195.35.39.18' }}
+          username: ${{ vars.HOSTINGER_PROD_USER || vars.HOSTINGER_PROD_USERNAME || secrets.HOSTINGER_PROD_USER || secrets.HOSTINGER_PROD_USERNAME || 'u778371618.keep-scrolling.com' }}
+          password: ${{ secrets.HOSTINGER_PROD_PASSWORD || vars.HOSTINGER_PROD_PASSWORD || secrets.HOSTINGER_PASSWORD || vars.HOSTINGER_PASSWORD || secrets.FTP_PASSWORD || vars.FTP_PASSWORD }}
+          protocol: ${{ vars.HOSTINGER_PROD_PROTOCOL || secrets.HOSTINGER_PROD_PROTOCOL || 'ftps' }}
+          port: ${{ vars.HOSTINGER_PROD_PORT || secrets.HOSTINGER_PROD_PORT || '21' }}
+          local-dir: ./deploy_bundle/
+          server-dir: ${{ vars.HOSTINGER_PROD_PATH || secrets.HOSTINGER_PROD_PATH || '/public_html/' }}
+          exclude: |
+            **/.DS_Store
+            **/.git*
+            **/node_modules/**
+            **/*.mov
