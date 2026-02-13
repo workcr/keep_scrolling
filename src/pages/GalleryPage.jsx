@@ -13,6 +13,16 @@ function readSearchFilters() {
 }
 
 function isTwoColItem(item) {
+  const explicitSpan = Number.parseInt(
+    item?.colSpan ??
+      item?.columnSpan ??
+      item?.["data-col-span"] ??
+      item?.["data-colspan"] ??
+      "",
+    10
+  );
+  if (Number.isFinite(explicitSpan) && explicitSpan >= 2) return true;
+
   const candidates = [
     item?.class,
     item?.className,
@@ -33,7 +43,7 @@ function isTwoColItem(item) {
     .toLowerCase();
 
   if (/(^|\W)2\s*-?\s*col(\W|$)/.test(candidates)) return true;
-  return /"2\s*-?\s*col"/.test(JSON.stringify(item).toLowerCase());
+  return /(2\s*-?\s*col|two\s*-?\s*col)/.test(JSON.stringify(item).toLowerCase());
 }
 
 function toSlug(value) {
