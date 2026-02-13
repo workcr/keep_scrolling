@@ -15,9 +15,14 @@ function readSearchFilters() {
 function isTwoColItem(item) {
   const candidates = [
     item?.class,
+    item?.className,
     item?.classes,
+    item?.["data-cropped"],
+    item?.cropped,
     item?.layout,
     item?.size,
+    item?.colSpan,
+    item?.columnSpan,
     item?.variant,
     item?.tag,
     item?.tags
@@ -27,7 +32,8 @@ function isTwoColItem(item) {
     .join(" ")
     .toLowerCase();
 
-  return /(^|\W)2\s*-?\s*col(\W|$)/.test(candidates);
+  if (/(^|\W)2\s*-?\s*col(\W|$)/.test(candidates)) return true;
+  return /"2\s*-?\s*col"/.test(JSON.stringify(item).toLowerCase());
 }
 
 function toSlug(value) {
