@@ -2,6 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData, useLocation } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
 
+const TWO_COLUMN_ITEM_IDS = new Set([
+  "scroll-item-6",
+  "scroll-item-8",
+  "scroll-item-10",
+  "scroll-item-12",
+  "scroll-item-14",
+  "scroll-item-24",
+  "scroll-item-29",
+  "scroll-item-44"
+]);
+
 function readSearchFilters() {
   const params = new URLSearchParams(window.location.search);
   return {
@@ -13,11 +24,28 @@ function readSearchFilters() {
 }
 
 function isTwoColItem(item) {
+  if (TWO_COLUMN_ITEM_IDS.has(String(item?.id || ""))) return true;
+
+  const explicitSpan = Number.parseInt(
+    item?.colSpan ??
+      item?.columnSpan ??
+      item?.["data-col-span"] ??
+      item?.["data-colspan"] ??
+      "",
+    10
+  );
+  if (Number.isFinite(explicitSpan) && explicitSpan >= 2) return true;
+
   const candidates = [
     item?.class,
+    item?.className,
     item?.classes,
+    item?.["data-cropped"],
+    item?.cropped,
     item?.layout,
     item?.size,
+    item?.colSpan,
+    item?.columnSpan,
     item?.variant,
     item?.tag,
     item?.tags
@@ -27,15 +55,18 @@ function isTwoColItem(item) {
     .join(" ")
     .toLowerCase();
 
-  return /(^|\W)2\s*-?\s*col(\W|$)/.test(candidates);
+  if (/(^|\W)2\s*-?\s*col(\W|$)/.test(candidates)) return true;
+  return /(2\s*-?\s*col|two\s*-?\s*col)/.test(JSON.stringify(item).toLowerCase());
 }
 
 function toSlug(value) {
   return String(value || "").trim().replace(/\s+/g, "-");
 }
 
-const INITIAL_BATCH = 30;
-const BATCH_SIZE = 8;
+const INITIAL_BATCH = 60;
+const BATCH_SIZE = 24;
+const LOAD_AHEAD_PX = 2600;
+const INITIAL_EAGER_VIDEO_LIMIT = 4;
 
 function buildBatch(source, start, count) {
   if (!source.length || count <= 0) return [];
@@ -52,10 +83,10 @@ export default function GalleryPage() {
   const location = useLocation();
   const [filters, setFilters] = useState(readSearchFilters());
   const [visibleItems, setVisibleItems] = useState([]);
-  const [scrollY, setScrollY] = useState(0);
   const gridRef = useRef(null);
   const sentinelRef = useRef(null);
   const isAppendingRef = useRef(false);
+  const loadCheckRafRef = useRef(0);
   const hasRestoredRef = useRef(false);
   const scrollKey = `gallery-scroll:${location.pathname}${location.search}`;
   const visibleCountKey = `${scrollKey}:count`;
@@ -92,7 +123,6 @@ export default function GalleryPage() {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
-        setScrollY(window.scrollY);
         window.sessionStorage.setItem(key, String(window.scrollY));
       });
     };
@@ -104,9 +134,14 @@ export default function GalleryPage() {
   }, [scrollKey]);
 
   useEffect(() => {
+    isAppendingRef.current = false;
+    if (loadCheckRafRef.current) {
+      cancelAnimationFrame(loadCheckRafRef.current);
+      loadCheckRafRef.current = 0;
+    }
     const storedCount = Number.parseInt(window.sessionStorage.getItem(visibleCountKey) || "", 10);
     const count = Number.isFinite(storedCount) ? Math.max(INITIAL_BATCH, Math.min(storedCount, 500)) : INITIAL_BATCH;
-    setVisibleItems(buildBatch(filtered, 0, Math.min(count, Math.max(count, filtered.length))));
+    setVisibleItems(buildBatch(filtered, 0, count));
   }, [filtered, visibleCountKey]);
 
   useEffect(() => {
@@ -141,6 +176,38 @@ export default function GalleryPage() {
     });
   }, [filtered]);
 
+  const scheduleLoadCheck = useCallback(() => {
+    if (!filtered.length || loadCheckRafRef.current) return;
+
+    loadCheckRafRef.current = requestAnimationFrame(() => {
+      loadCheckRafRef.current = 0;
+      const doc = document.documentElement;
+      const scrollBottom = window.scrollY + window.innerHeight;
+      const remaining = doc.scrollHeight - scrollBottom;
+
+      if (remaining < LOAD_AHEAD_PX) appendBatch();
+    });
+  }, [appendBatch, filtered.length]);
+
+  useEffect(() => {
+    scheduleLoadCheck();
+    return () => {
+      if (loadCheckRafRef.current) {
+        cancelAnimationFrame(loadCheckRafRef.current);
+        loadCheckRafRef.current = 0;
+      }
+    };
+  }, [scheduleLoadCheck, visibleItems.length]);
+
+  useEffect(() => {
+    window.addEventListener("scroll", scheduleLoadCheck, { passive: true });
+    window.addEventListener("resize", scheduleLoadCheck);
+    return () => {
+      window.removeEventListener("scroll", scheduleLoadCheck);
+      window.removeEventListener("resize", scheduleLoadCheck);
+    };
+  }, [scheduleLoadCheck]);
+
   useEffect(() => {
     if (!sentinelRef.current || !filtered.length) return;
 
@@ -148,14 +215,14 @@ export default function GalleryPage() {
       (entries) => {
         const [entry] = entries;
         if (!entry?.isIntersecting) return;
-        appendBatch();
+        scheduleLoadCheck();
       },
       { root: null, threshold: 0, rootMargin: "1400px" }
     );
 
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [appendBatch, filtered.length]);
+  }, [filtered.length, scheduleLoadCheck]);
 
   useEffect(() => {
     const grid = gridRef.current;
@@ -220,21 +287,24 @@ export default function GalleryPage() {
     return () => observer.disconnect();
   }, [visibleItems]);
 
-  const eagerVideoCount = useMemo(() => {
-    const base = 36;
-    const growth = Math.floor(scrollY / 700) * 8;
-    return Math.min(visibleItems.length, base + growth);
-  }, [scrollY, visibleItems.length]);
+  let videoCount = 0;
 
   return (
     <div style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 0 }}>
+      {filtered.length === 0 ? (
+        <div className="my-4 rounded bg-red-50 p-3 text-sm text-red-700">
+          No gallery items available right now. Please try again later.
+        </div>
+      ) : null}
       <div className="gallery-grid" ref={gridRef}>
         {visibleItems.map((item, index) => {
           const slug = toSlug(item.project);
           const key = `${item.id ?? slug}-${item.__sequenceIndex ?? index}`;
           const twoCol = isTwoColItem(item);
           const mediaType = String(item["data-media-type"] || "").toLowerCase();
-          const eagerVideo = mediaType === "video" && index < eagerVideoCount;
+          const videoIndex = mediaType === "video" ? videoCount : -1;
+          if (mediaType === "video") videoCount += 1;
+          const eagerVideo = videoIndex >= 0 && videoIndex < INITIAL_EAGER_VIDEO_LIMIT;
           return (
             <Link
               key={key}
@@ -243,6 +313,14 @@ export default function GalleryPage() {
             >
               <MediaCard
                 {...item}
+                sizes={
+                  twoCol
+                    ? "(max-width: 480px) 67vw, (max-width: 767px) 50vw, (max-width: 1199px) 40vw, 34vw"
+                    : "(max-width: 480px) 33vw, (max-width: 767px) 25vw, (max-width: 1199px) 20vw, 17vw"
+                }
+                videoInteraction={mediaType === "video" ? "hover" : undefined}
+                deferVideo={mediaType === "video" && !eagerVideo}
+                videoLoadMargin="900px"
                 loading={eagerVideo ? "eager" : "lazy"}
                 quality={mediaType === "video" ? "auto" : undefined}
               />
