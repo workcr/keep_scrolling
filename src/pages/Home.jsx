@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
 import scrollItems from "../data/scroll-items.json";
+import { slugifyProjectName } from "../utils";
 
 const INITIAL_BATCH = 24;
 const BATCH_SIZE = 8;
@@ -61,7 +63,8 @@ function parseMaxRatio(value, fallbackRatio) {
   }
   const numeric = Number.parseFloat(raw);
   if (!Number.isFinite(numeric)) return fallbackRatio;
-  if (numeric > 0 && numeric <= 100) return numeric / 100;
+  if (numeric > 0 && numeric <= 2) return numeric;
+  if (numeric > 2 && numeric <= 100) return numeric / 100;
   return fallbackRatio;
 }
 
@@ -90,6 +93,10 @@ function mediaContainerStyle(item) {
     style.aspectRatio = "16 / 9";
   }
   return { ...parseInlineStyle(item.style), ...style };
+}
+
+function projectNameForItem(item) {
+  return String(item.project ?? item["data-project"] ?? "").trim();
 }
 
 export default function Home() {
@@ -249,6 +256,21 @@ export default function Home() {
           }
 
           const keyBase = item.id ?? item.src ?? index;
+          const projectName = projectNameForItem(item);
+          const projectSlug = slugifyProjectName(projectName);
+          const mediaNode = (
+            <MediaCard
+              {...item}
+              sizes="84vw"
+              videoInteraction={mediaType === "video" ? "hover" : undefined}
+              loading={
+                mediaType === "video" && index <= currentIndex + EAGER_VIDEO_AHEAD_ITEMS
+                  ? "eager"
+                  : "lazy"
+              }
+              quality={mediaType === "video" ? "auto" : undefined}
+            />
+          );
 
           return (
             <div key={`${keyBase}-${index}`} className="home-item-layer" style={{ zIndex: index + 1 }}>
@@ -263,15 +285,16 @@ export default function Home() {
               >
                 {mediaType === "text" ? (
                   <div className="home-text-card text-3xl">{item.content}</div>
+                ) : projectSlug ? (
+                  <Link
+                    to={`/project/${projectSlug}`}
+                    className="home-item-link"
+                    aria-label={`View ${projectName} project`}
+                  >
+                    {mediaNode}
+                  </Link>
                 ) : (
-                  <MediaCard
-                    {...item}
-                    loading={
-                      mediaType === "video" && index <= currentIndex + EAGER_VIDEO_AHEAD_ITEMS
-                        ? "eager"
-                        : "lazy"
-                    }
-                  />
+                  mediaNode
                 )}
               </div>
             </div>

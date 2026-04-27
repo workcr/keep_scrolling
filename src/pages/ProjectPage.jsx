@@ -47,7 +47,7 @@ export default function ProjectPage() {
           {project.gallery &&
             project.gallery.map((item) => (
               <div className="project-rail-item" key={item.id}>
-                <MediaCard {...item} />
+                <MediaCard {...item} projectMedia quality="auto" />
               </div>
             ))}
         </div>
@@ -87,7 +87,7 @@ export default function ProjectPage() {
       {project.gallery && (
         <div className="block lg:hidden px-8 space-y-4 project-mobile-stack">
           {project.gallery.map((item) => (
-            <MediaCard key={item.id} {...item} />
+            <MediaCard key={item.id} {...item} projectMedia quality="auto" />
           ))}
         </div>
       )}
