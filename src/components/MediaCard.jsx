@@ -503,7 +503,7 @@ export default function MediaCard(item) {
             ref={videoRef}
             src={url}
             aria-label={item.alt || item.id}
-            autoPlay
+            autoPlay={item.videoActive !== false}
             muted={!projectMedia || projectMuted}
             loop
             playsInline
