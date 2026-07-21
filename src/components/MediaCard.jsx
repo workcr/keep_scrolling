@@ -292,6 +292,24 @@ export default function MediaCard(item) {
     [iframeOrigin, isVimeoVideo]
   );
 
+  useEffect(() => {
+    if (
+      mediaType !== "video" ||
+      projectMedia ||
+      !deferredVideoReady ||
+      item.videoActive === undefined
+    ) {
+      return;
+    }
+
+    if (item.videoActive) {
+      sendVideoCommand("play");
+      return;
+    }
+
+    sendVideoCommand("pause");
+  }, [deferredVideoReady, item.videoActive, mediaType, projectMedia, sendVideoCommand]);
+
   const enableAudio = useCallback(() => {
     sendVideoCommand("setVolume", 1);
     sendVideoCommand("setMuted", false);
