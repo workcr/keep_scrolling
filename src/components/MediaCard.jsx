@@ -181,8 +181,10 @@ export default function MediaCard(item) {
   const [projectDuration, setProjectDuration] = useState(0);
   const containerRef = useRef(null);
   const iframeRef = useRef(null);
+  const videoRef = useRef(null);
   const mediaType = String(item["data-media-type"] || item.mediaType || "").toLowerCase();
   const src = normalizeAssetUrl(item.src);
+  const isVimeoVideo = mediaType === "video" && /(?:player\.)?vimeo\.com/i.test(src);
   const srcSet = normalizeSrcSet(item.srcset, src, item["data-width"]);
   const loadingMode = item.loading === "eager" ? "eager" : "lazy";
   const fetchPriority = loadingMode === "eager" ? "high" : "auto";
@@ -199,6 +201,7 @@ export default function MediaCard(item) {
     }
 
     setDeferredVideoReady(false);
+    if (item.videoLoadStrategy === "manual") return undefined;
     const element = containerRef.current;
     if (!element || typeof IntersectionObserver === "undefined") {
       setDeferredVideoReady(true);
@@ -216,7 +219,7 @@ export default function MediaCard(item) {
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [item.deferVideo, item.videoLoadMargin, mediaType, src]);
+  }, [item.deferVideo, item.videoLoadMargin, item.videoLoadStrategy, mediaType, src]);
 
   useEffect(() => {
     if (!projectMedia || mediaType === "video") return undefined;
@@ -268,37 +271,48 @@ export default function MediaCard(item) {
     return () => window.clearTimeout(timeout);
   }, [mediaType, projectExpanded, projectImageHighQualityReady, projectMedia]);
 
-  const sendVimeoCommand = useCallback(
+  const sendVideoCommand = useCallback(
     (method, value) => {
+      if (!isVimeoVideo) {
+        const video = videoRef.current;
+        if (!video) return;
+        if (method === "play") void video.play().catch(() => {});
+        if (method === "pause") video.pause();
+        if (method === "setMuted") video.muted = Boolean(value);
+        if (method === "setVolume") video.volume = Number(value);
+        if (method === "setCurrentTime") video.currentTime = Number(value);
+        return;
+      }
+
       const target = iframeRef.current?.contentWindow;
       if (!target) return;
       const message = value === undefined ? { method } : { method, value };
       target.postMessage(JSON.stringify(message), iframeOrigin);
     },
-    [iframeOrigin]
+    [iframeOrigin, isVimeoVideo]
   );
 
   const enableAudio = useCallback(() => {
-    sendVimeoCommand("setVolume", 1);
-    sendVimeoCommand("setMuted", false);
-    sendVimeoCommand("play");
-  }, [sendVimeoCommand]);
+    sendVideoCommand("setVolume", 1);
+    sendVideoCommand("setMuted", false);
+    sendVideoCommand("play");
+  }, [sendVideoCommand]);
 
   const disableAudio = useCallback(() => {
-    sendVimeoCommand("setVolume", 0);
-    sendVimeoCommand("setMuted", true);
-  }, [sendVimeoCommand]);
+    sendVideoCommand("setVolume", 0);
+    sendVideoCommand("setMuted", true);
+  }, [sendVideoCommand]);
 
   const toggleProjectVideo = useCallback(() => {
     if (clickPlaying) {
-      sendVimeoCommand("pause");
+      sendVideoCommand("pause");
       setClickPlaying(false);
       return;
     }
 
     enableAudio();
     setClickPlaying(true);
-  }, [clickPlaying, enableAudio, sendVimeoCommand]);
+  }, [clickPlaying, enableAudio, sendVideoCommand]);
 
   const toggleProjectMedia = useCallback(() => {
     if (!projectMedia) return;
@@ -314,28 +328,28 @@ export default function MediaCard(item) {
   const toggleProjectPlayback = useCallback((event) => {
     event.stopPropagation();
     if (projectPlaying) {
-      sendVimeoCommand("pause");
+      sendVideoCommand("pause");
       setProjectPlaying(false);
       return;
     }
 
-    sendVimeoCommand("play");
+    sendVideoCommand("play");
     setProjectPlaying(true);
-  }, [projectPlaying, sendVimeoCommand]);
+  }, [projectPlaying, sendVideoCommand]);
 
   const toggleProjectMute = useCallback((event) => {
     event.stopPropagation();
     const nextMuted = !projectMuted;
     if (nextMuted) {
-      sendVimeoCommand("setVolume", 0);
-      sendVimeoCommand("setMuted", true);
+      sendVideoCommand("setVolume", 0);
+      sendVideoCommand("setMuted", true);
     } else {
-      sendVimeoCommand("setVolume", 1);
-      sendVimeoCommand("setMuted", false);
-      sendVimeoCommand("play");
+      sendVideoCommand("setVolume", 1);
+      sendVideoCommand("setMuted", false);
+      sendVideoCommand("play");
     }
     setProjectMuted(nextMuted);
-  }, [projectMuted, sendVimeoCommand]);
+  }, [projectMuted, sendVideoCommand]);
 
   const seekProjectVideo = useCallback((event) => {
     event.stopPropagation();
@@ -345,11 +359,11 @@ export default function MediaCard(item) {
     const ratio = Math.min(Math.max(x / rect.width, 0), 1);
     const nextSeconds = projectDuration * ratio;
     setProjectSeconds(nextSeconds);
-    sendVimeoCommand("setCurrentTime", nextSeconds);
-  }, [projectDuration, sendVimeoCommand]);
+    sendVideoCommand("setCurrentTime", nextSeconds);
+  }, [projectDuration, sendVideoCommand]);
 
   useEffect(() => {
-    if (mediaType !== "video" || !projectMedia || !deferredVideoReady) return undefined;
+    if (mediaType !== "video" || !projectMedia || !deferredVideoReady || !isVimeoVideo) return undefined;
 
     const onMessage = (event) => {
       if (event.origin !== iframeOrigin) return;
@@ -366,11 +380,11 @@ export default function MediaCard(item) {
       if (!message || typeof message !== "object") return;
       if (message.event === "ready") {
         ["play", "pause", "playProgress", "loaded", "volumechange"].forEach((eventName) => {
-          sendVimeoCommand("addEventListener", eventName);
+          sendVideoCommand("addEventListener", eventName);
         });
-        sendVimeoCommand("setVolume", projectMuted ? 0 : 1);
-        sendVimeoCommand("setMuted", projectMuted);
-        if (!projectMuted) sendVimeoCommand("play");
+        sendVideoCommand("setVolume", projectMuted ? 0 : 1);
+        sendVideoCommand("setMuted", projectMuted);
+        if (!projectMuted) sendVideoCommand("play");
         return;
       }
 
@@ -390,7 +404,7 @@ export default function MediaCard(item) {
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [deferredVideoReady, iframeOrigin, mediaType, projectMedia, projectMuted, sendVimeoCommand]);
+  }, [deferredVideoReady, iframeOrigin, isVimeoVideo, mediaType, projectMedia, projectMuted, sendVideoCommand]);
 
   const formatTime = useCallback((seconds) => {
     if (!Number.isFinite(seconds) || seconds <= 0) return "00:00";
@@ -405,7 +419,9 @@ export default function MediaCard(item) {
     const paddingBottom = aspectRatioPadding(item);
     const aspectRatio = aspectRatioValue(item);
     const requestedQuality = String(item.quality || "1080p");
-    const url = buildVideoEmbedUrl(src, requestedQuality, interactionMode, !projectMedia);
+    const url = isVimeoVideo
+      ? buildVideoEmbedUrl(src, requestedQuality, interactionMode, !projectMedia)
+      : src;
     const hoverProps =
       interactionMode === "hover"
         ? {
@@ -453,7 +469,7 @@ export default function MediaCard(item) {
         {...hoverProps}
         {...clickProps}
       >
-        {deferredVideoReady ? (
+        {deferredVideoReady && isVimeoVideo ? (
           <iframe
             ref={iframeRef}
             src={url}
@@ -462,6 +478,28 @@ export default function MediaCard(item) {
             allow="autoplay; fullscreen; picture-in-picture"
             loading={loadingMode}
             fetchPriority={fetchPriority}
+          />
+        ) : null}
+        {deferredVideoReady && !isVimeoVideo ? (
+          <video
+            ref={videoRef}
+            src={url}
+            aria-label={item.alt || item.id}
+            autoPlay
+            muted={!projectMedia || projectMuted}
+            loop
+            playsInline
+            preload={loadingMode === "eager" ? "auto" : "metadata"}
+            onError={() => setErrored(true)}
+            onLoadedMetadata={(event) => {
+              if (projectMedia) setProjectDuration(event.currentTarget.duration || 0);
+            }}
+            onTimeUpdate={(event) => {
+              if (projectMedia) setProjectSeconds(event.currentTarget.currentTime || 0);
+            }}
+            onPlay={() => setProjectPlaying(true)}
+            onPause={() => setProjectPlaying(false)}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           />
         ) : null}
         {projectMedia ? (

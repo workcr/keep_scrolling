@@ -15,9 +15,9 @@ const DEFAULT_MAX_WIDTH_RATIO = 0.84;
 const DEFAULT_MAX_HEIGHT_RATIO = 0.84;
 const BOTTOM_SAFE_MARGIN_PX = 16;
 const EDGE_PADDING_RATIO = 0.05;
-const PRELOAD_BEHIND_ITEMS = 48;
-const PRELOAD_AHEAD_ITEMS = 8;
-const EAGER_VIDEO_AHEAD_ITEMS = 6;
+const PRELOAD_BEHIND_ITEMS = 2;
+const PRELOAD_AHEAD_ITEMS = 3;
+const EAGER_VIDEO_AHEAD_ITEMS = 1;
 
 function parseInlineStyle(input) {
   if (!input) return {};
@@ -263,6 +263,8 @@ export default function Home() {
               {...item}
               sizes="84vw"
               videoInteraction={mediaType === "video" ? "hover" : undefined}
+              deferVideo={mediaType === "video" && index > currentIndex + EAGER_VIDEO_AHEAD_ITEMS}
+              videoLoadStrategy="manual"
               loading={
                 mediaType === "video" && index <= currentIndex + EAGER_VIDEO_AHEAD_ITEMS
                   ? "eager"
