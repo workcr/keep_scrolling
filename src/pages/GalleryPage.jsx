@@ -144,6 +144,7 @@ export default function GalleryPage() {
   const hasRestoredRef = useRef(false);
   const scrollKey = `gallery-scroll:${location.pathname}${location.search}`;
   const visibleCountKey = `${scrollKey}:count`;
+  const hasActiveFilters = Object.values(filters).some((selected) => selected.length > 0);
 
   useEffect(() => {
     const onPop = () => setFilters(readSearchFilters());
@@ -194,9 +195,13 @@ export default function GalleryPage() {
       loadCheckRafRef.current = 0;
     }
     const storedCount = Number.parseInt(window.sessionStorage.getItem(visibleCountKey) || "", 10);
-    const count = Number.isFinite(storedCount) ? Math.max(INITIAL_BATCH, Math.min(storedCount, 500)) : INITIAL_BATCH;
+    const count = hasActiveFilters
+      ? filtered.length
+      : Number.isFinite(storedCount)
+        ? Math.max(INITIAL_BATCH, Math.min(storedCount, 500))
+        : INITIAL_BATCH;
     setVisibleItems(buildBatch(filtered, 0, count));
-  }, [filtered, visibleCountKey]);
+  }, [filtered, hasActiveFilters, visibleCountKey]);
 
   useEffect(() => {
     if (!visibleItems.length) return;
@@ -222,16 +227,16 @@ export default function GalleryPage() {
   }, [scrollKey, visibleItems.length]);
 
   const appendBatch = useCallback(() => {
-    if (!filtered.length || isAppendingRef.current) return;
+    if (hasActiveFilters || !filtered.length || isAppendingRef.current) return;
     isAppendingRef.current = true;
     setVisibleItems((prev) => [...prev, ...buildBatch(filtered, prev.length, BATCH_SIZE)]);
     requestAnimationFrame(() => {
       isAppendingRef.current = false;
     });
-  }, [filtered]);
+  }, [filtered, hasActiveFilters]);
 
   const scheduleLoadCheck = useCallback(() => {
-    if (!filtered.length || loadCheckRafRef.current) return;
+    if (hasActiveFilters || !filtered.length || loadCheckRafRef.current) return;
 
     loadCheckRafRef.current = requestAnimationFrame(() => {
       loadCheckRafRef.current = 0;
@@ -241,7 +246,7 @@ export default function GalleryPage() {
 
       if (remaining < LOAD_AHEAD_PX) appendBatch();
     });
-  }, [appendBatch, filtered.length]);
+  }, [appendBatch, filtered.length, hasActiveFilters]);
 
   useEffect(() => {
     scheduleLoadCheck();
@@ -263,7 +268,7 @@ export default function GalleryPage() {
   }, [scheduleLoadCheck]);
 
   useEffect(() => {
-    if (!sentinelRef.current || !filtered.length) return;
+    if (hasActiveFilters || !sentinelRef.current || !filtered.length) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -276,7 +281,7 @@ export default function GalleryPage() {
 
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [filtered.length, scheduleLoadCheck]);
+  }, [filtered.length, hasActiveFilters, scheduleLoadCheck]);
 
   useEffect(() => {
     const grid = gridRef.current;
@@ -369,7 +374,9 @@ export default function GalleryPage() {
           );
         })}
       </div>
-      {filtered.length ? <div ref={sentinelRef} style={{ height: 1 }} aria-hidden="true" /> : null}
+      {filtered.length && !hasActiveFilters ? (
+        <div ref={sentinelRef} style={{ height: 1 }} aria-hidden="true" />
+      ) : null}
     </div>
   );
 }
