@@ -25,6 +25,7 @@ const router = createBrowserRouter(
     {
       path: "/",
       element: <MainLayout />,
+      hydrateFallbackElement: <div />,
       children: [
         {
           index: true,

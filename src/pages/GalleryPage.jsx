@@ -63,10 +63,10 @@ function toSlug(value) {
   return String(value || "").trim().replace(/\s+/g, "-");
 }
 
-const INITIAL_BATCH = 60;
-const BATCH_SIZE = 24;
-const LOAD_AHEAD_PX = 2600;
-const INITIAL_EAGER_VIDEO_LIMIT = 4;
+const INITIAL_BATCH = 36;
+const BATCH_SIZE = 12;
+const LOAD_AHEAD_PX = 1600;
+const INITIAL_EAGER_VIDEO_LIMIT = 1;
 
 function buildBatch(source, start, count) {
   if (!source.length || count <= 0) return [];
@@ -76,6 +76,60 @@ function buildBatch(source, start, count) {
     batch.push({ ...source[sequenceIndex % source.length], __sequenceIndex: sequenceIndex });
   }
   return batch;
+}
+
+function GalleryItem({ item, twoCol, eagerVideo }) {
+  const linkRef = useRef(null);
+  const mediaType = String(item["data-media-type"] || "").toLowerCase();
+  const isVideo = mediaType === "video";
+  const [videoReady, setVideoReady] = useState(!isVideo || eagerVideo);
+  const slug = toSlug(item.project);
+
+  useEffect(() => {
+    if (!isVideo || eagerVideo) {
+      setVideoReady(true);
+      return undefined;
+    }
+
+    setVideoReady(false);
+    const element = linkRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVideoReady(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setVideoReady(Boolean(entry?.isIntersecting));
+      },
+      { root: null, threshold: 0, rootMargin: "300px" }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [eagerVideo, isVideo, item.src]);
+
+  return (
+    <Link
+      ref={linkRef}
+      to={`/project/${slug}`}
+      className={twoCol ? "gallery-grid-item gallery-grid-item--2col" : "gallery-grid-item"}
+    >
+      <MediaCard
+        {...item}
+        sizes={
+          twoCol
+            ? "(max-width: 480px) 67vw, (max-width: 767px) 50vw, (max-width: 1199px) 40vw, 34vw"
+            : "(max-width: 480px) 33vw, (max-width: 767px) 25vw, (max-width: 1199px) 20vw, 17vw"
+        }
+        videoInteraction={isVideo ? "hover" : undefined}
+        deferVideo={isVideo && !videoReady}
+        videoLoadStrategy="manual"
+        loading={eagerVideo ? "eager" : "lazy"}
+        quality={isVideo ? "auto" : undefined}
+      />
+    </Link>
+  );
 }
 
 export default function GalleryPage() {
@@ -306,25 +360,12 @@ export default function GalleryPage() {
           if (mediaType === "video") videoCount += 1;
           const eagerVideo = videoIndex >= 0 && videoIndex < INITIAL_EAGER_VIDEO_LIMIT;
           return (
-            <Link
+            <GalleryItem
               key={key}
-              to={`/project/${slug}`}
-              className={twoCol ? "gallery-grid-item gallery-grid-item--2col" : "gallery-grid-item"}
-            >
-              <MediaCard
-                {...item}
-                sizes={
-                  twoCol
-                    ? "(max-width: 480px) 67vw, (max-width: 767px) 50vw, (max-width: 1199px) 40vw, 34vw"
-                    : "(max-width: 480px) 33vw, (max-width: 767px) 25vw, (max-width: 1199px) 20vw, 17vw"
-                }
-                videoInteraction={mediaType === "video" ? "hover" : undefined}
-                deferVideo={mediaType === "video" && !eagerVideo}
-                videoLoadMargin="900px"
-                loading={eagerVideo ? "eager" : "lazy"}
-                quality={mediaType === "video" ? "auto" : undefined}
-              />
-            </Link>
+              item={item}
+              twoCol={twoCol}
+              eagerVideo={eagerVideo}
+            />
           );
         })}
       </div>
