@@ -1,7 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { filtersLoader, projectLoader } from "./api";
+import { filtersLoader, homeLoader, projectLoader } from "./api";
 import MainLayout from "./layout/MainLayout";
 import Home from "./pages/Home";
 import NotFound from "./pages/NotFound";
@@ -30,6 +30,7 @@ const router = createBrowserRouter(
         {
           index: true,
           element: <Home />,
+          loader: homeLoader,
           errorElement: <NotFound />
         },
         {

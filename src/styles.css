@@ -383,7 +383,7 @@
 }
 
 .about-copy {
-  max-width: 360px;
+  max-width: 520px;
   display: flex;
   flex-direction: column;
   gap: 30px;
@@ -433,14 +433,14 @@
   }
 
   .about-content-grid {
-    max-width: 620px;
+    max-width: 760px;
     grid-template-columns: 90px 1fr;
     column-gap: 64px;
     row-gap: 86px;
   }
 
   .about-copy {
-    max-width: 420px;
+    max-width: 560px;
   }
 
   .about-footer-art {

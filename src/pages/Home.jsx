@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLoaderData } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
 import scrollItems from "../data/scroll-items.json";
 import { slugifyProjectName } from "../utils";
@@ -102,9 +102,12 @@ function projectNameForItem(item) {
 }
 
 export default function Home() {
+  const { items: loadedItems = [] } = useLoaderData();
   const sourceItems = useMemo(
-    () => scrollItems.filter((item) => String(item.class || "").includes("scroll-item")),
-    []
+    () => (loadedItems.length ? loadedItems : scrollItems).filter(
+      (item) => String(item.class || "").includes("scroll-item")
+    ),
+    [loadedItems]
   );
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);

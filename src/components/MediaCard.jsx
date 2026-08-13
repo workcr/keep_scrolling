@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  browserVideoConditions,
+  optimizedVideoSource,
+  responsiveImageSrcSet
+} from "../mediaOptimization";
 
 const KNOWN_VIMEO_HASHES = {
   "1055304584": "c4a306474a"
@@ -182,16 +187,22 @@ export default function MediaCard(item) {
   const containerRef = useRef(null);
   const iframeRef = useRef(null);
   const videoRef = useRef(null);
+  const adaptiveVideoSrcRef = useRef("");
+  const adaptiveVideoResumeRef = useRef(null);
   const mediaType = String(item["data-media-type"] || item.mediaType || "").toLowerCase();
   const src = normalizeAssetUrl(item.src);
   const isVimeoVideo = mediaType === "video" && /(?:player\.)?vimeo\.com/i.test(src);
-  const srcSet = normalizeSrcSet(item.srcset, src, item["data-width"]);
+  const srcSet = normalizeSrcSet(item.srcset, src, item["data-width"]) || responsiveImageSrcSet(src);
   const loadingMode = item.loading === "eager" ? "eager" : "lazy";
   const fetchPriority = loadingMode === "eager" ? "high" : "auto";
   const interactionMode = item.videoInteraction === "click" ? "click" : item.videoInteraction === "hover" ? "hover" : "none";
   const projectMedia = item.projectMedia === true;
   const iframeOrigin = useMemo(() => vimeoOrigin(src), [src]);
   const highQualityImageSrc = useMemo(() => largestSrcSetCandidate(srcSet) || src, [src, srcSet]);
+  const [adaptiveVideoSrc, setAdaptiveVideoSrc] = useState(() =>
+    optimizedVideoSource(src, browserVideoConditions(item.projectMedia === true))
+  );
+  adaptiveVideoSrcRef.current = adaptiveVideoSrc;
   const sharedStyle = { width: "100%", height: "auto", display: "block", objectFit: "contain" };
 
   useEffect(() => {
@@ -223,6 +234,10 @@ export default function MediaCard(item) {
 
   useEffect(() => {
     if (!projectMedia || mediaType === "video") return undefined;
+    if (!projectExpanded) {
+      setProjectImageHighQualityReady(false);
+      return undefined;
+    }
     if (!highQualityImageSrc || typeof Image === "undefined") {
       setProjectImageHighQualityReady(true);
       return undefined;
@@ -256,7 +271,31 @@ export default function MediaCard(item) {
       image.onload = null;
       image.onerror = null;
     };
-  }, [highQualityImageSrc, mediaType, projectMedia]);
+  }, [highQualityImageSrc, mediaType, projectExpanded, projectMedia]);
+
+  useEffect(() => {
+    if (mediaType !== "video" || isVimeoVideo) {
+      setAdaptiveVideoSrc(src);
+      return undefined;
+    }
+
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const updateSource = () => {
+      const nextSource = optimizedVideoSource(src, browserVideoConditions(projectMedia));
+      if (nextSource === adaptiveVideoSrcRef.current) return;
+
+      const video = videoRef.current;
+      adaptiveVideoResumeRef.current = video
+        ? { currentTime: video.currentTime, shouldPlay: !video.paused }
+        : null;
+      adaptiveVideoSrcRef.current = nextSource;
+      setAdaptiveVideoSrc(nextSource);
+    };
+
+    updateSource();
+    connection?.addEventListener?.("change", updateSource);
+    return () => connection?.removeEventListener?.("change", updateSource);
+  }, [isVimeoVideo, mediaType, projectMedia, src]);
 
   useEffect(() => {
     if (!projectMedia || mediaType === "video") return undefined;
@@ -439,7 +478,7 @@ export default function MediaCard(item) {
     const requestedQuality = String(item.quality || "1080p");
     const url = isVimeoVideo
       ? buildVideoEmbedUrl(src, requestedQuality, interactionMode, !projectMedia)
-      : src;
+      : adaptiveVideoSrc;
     const hoverProps =
       interactionMode === "hover"
         ? {
@@ -510,6 +549,15 @@ export default function MediaCard(item) {
             preload={loadingMode === "eager" ? "auto" : "metadata"}
             onError={() => setErrored(true)}
             onLoadedMetadata={(event) => {
+              const resume = adaptiveVideoResumeRef.current;
+              if (resume) {
+                event.currentTarget.currentTime = Math.min(
+                  resume.currentTime,
+                  event.currentTarget.duration || resume.currentTime
+                );
+                if (resume.shouldPlay) void event.currentTarget.play().catch(() => {});
+                adaptiveVideoResumeRef.current = null;
+              }
               if (projectMedia) setProjectDuration(event.currentTarget.duration || 0);
             }}
             onTimeUpdate={(event) => {
