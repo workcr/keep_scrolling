@@ -1,10 +1,21 @@
+import Seo from "../components/Seo";
+import { SITE } from "../site";
+
 export default function AboutPage() {
   return (
     <section className="about-page">
+      <Seo
+        title={`About — ${SITE.name}, Creative Director`}
+        description={SITE.description}
+        path="/about"
+      />
       <div className="about-hero">
         <img
           src="/assets/rmnds1_by%20Izique_RedOrange.webp"
-          alt="Portrait with red background"
+          alt="Portrait of Rodrigo Mendes against a red-orange background"
+          width="2048"
+          height="1536"
+          fetchPriority="high"
           className="about-hero-image"
         />
       </div>
@@ -37,7 +48,7 @@ export default function AboutPage() {
             <a href="#" className="about-link">
               Instagram
             </a>
-            <a href="https://www.linkedin.com/in/rodrigo-mendes-4029b821" className="about-link">
+            <a href="https://www.linkedin.com/in/rodrigo-mendes-4029b821" className="about-link" rel="me">
               LinkedIn
             </a>
           </div>

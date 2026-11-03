@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData, useLocation } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
+import Seo from "../components/Seo";
+import { SITE } from "../site";
+import { slugifyProjectName } from "../utils";
 
 const TWO_COLUMN_ITEM_IDS = new Set([
   "scroll-item-6",
@@ -59,9 +62,9 @@ function isTwoColItem(item) {
   return /(2\s*-?\s*col|two\s*-?\s*col)/.test(JSON.stringify(item).toLowerCase());
 }
 
-function toSlug(value) {
-  return String(value || "").trim().replace(/\s+/g, "-");
-}
+// Same slug as the home page and sitemap, so each project has one URL
+// (previously "Surf-Overdose" and "surf-overdose" were both linked).
+const toSlug = slugifyProjectName;
 
 const INITIAL_BATCH = 36;
 const BATCH_SIZE = 12;
@@ -350,6 +353,12 @@ export default function GalleryPage() {
 
   return (
     <div style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 0 }}>
+      <Seo
+        title={`Gallery — ${SITE.name}, Creative Director`}
+        description={`Selected branding, campaign, film and design work by Creative Director ${SITE.name}.`}
+        path="/gallery"
+        noindex={hasActiveFilters}
+      />
       {filtered.length === 0 ? (
         <div className="my-4 rounded bg-red-50 p-3 text-sm text-red-700">
           No gallery items available right now. Please try again later.

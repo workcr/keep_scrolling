@@ -1,4 +1,6 @@
 import { Link, useLoaderData } from "react-router-dom";
+import Seo from "../components/Seo";
+import { SITE } from "../site";
 
 export default function FiltersPage() {
   const { items } = useLoaderData();
@@ -20,6 +22,11 @@ export default function FiltersPage() {
 
   return (
     <div className="filters">
+      <Seo
+        title={`Browse work by client, project and discipline — ${SITE.name}`}
+        description={`Filter the portfolio of Creative Director ${SITE.name} by client, project, category and discipline.`}
+        path="/filters"
+      />
       <div className="container mx-auto">
         {!items && (
           <div className="my-4 rounded bg-red-50 p-3 text-sm text-red-700">Error loading filters</div>

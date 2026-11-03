@@ -1,4 +1,6 @@
 import localScrollItems from "./data/scroll-items.json";
+import { csvToObjects } from "./csv";
+import { titleCase } from "./site";
 
 const DEFAULT_API_BASE = "https://api.sheety.co/55ad31708c31d543a624b88053f567d9/backend/";
 const DEFAULT_ITEMS_CSV_URL =
@@ -15,6 +17,22 @@ function pick(...values) {
   return undefined;
 }
 
+const PLACEHOLDER_ALT = /needs a description/i;
+
+// Many sheet rows still carry "This image needs a description." as alt text.
+// That is worse than nothing for screen readers and image search, so derive a
+// short factual label from the row until a real description is written.
+function describeMedia(alt, { mediaType, project, client }) {
+  const text = String(alt || "").trim();
+  if (text && !PLACEHOLDER_ALT.test(text)) return text;
+  if (!project) return "";
+  const kind = String(mediaType || "").toLowerCase() === "video" ? "Video" : "Image";
+  const byClient = client && String(client).toLowerCase() !== String(project).toLowerCase()
+    ? ` for ${titleCase(client)}`
+    : "";
+  return `${kind} from the ${titleCase(project)} project${byClient}`;
+}
+
 function normalizeItem(item) {
   const mediaType = pick(item["data-media-type"], item.mediaType);
   const client = pick(item.client, item["data-client"]);
@@ -24,6 +42,7 @@ function normalizeItem(item) {
 
   return {
     ...item,
+    alt: describeMedia(item.alt, { mediaType, project, client }),
     mediaType,
     client,
     project,
@@ -87,49 +106,6 @@ async function fetchJsonWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let value = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (char === "\"") {
-      if (inQuotes && next === "\"") {
-        value += "\"";
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      row.push(value);
-      value = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") i += 1;
-      row.push(value);
-      if (row.some((cell) => cell !== "")) rows.push(row);
-      row = [];
-      value = "";
-      continue;
-    }
-
-    value += char;
-  }
-
-  row.push(value);
-  if (row.some((cell) => cell !== "")) rows.push(row);
-  return rows;
-}
-
 async function fetchTextWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -144,16 +120,29 @@ async function fetchTextWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
-async function fetchSheetItems() {
-  const text = await fetchTextWithTimeout(ITEMS_CSV_URL);
-  const [headers = [], ...rows] = parseCsv(text);
-  return rows
-    .map((row) =>
-      Object.fromEntries(headers.map((header, index) => [String(header || "").trim(), row[index] ?? ""]))
-    )
-    .map(normalizeItem)
-    .sort((a, b) => itemSequence(a) - itemSequence(b));
+// Every route loader needs the same sheet. Without a cache, navigating
+// Home -> Gallery -> Project re-downloaded the whole CSV each time and blocked
+// the navigation on it. Keep one in-flight/settled promise per page session and
+// drop it on failure so the next navigation retries.
+let sheetItemsPromise;
+
+function fetchSheetItems() {
+  if (!sheetItemsPromise) {
+    sheetItemsPromise = fetchTextWithTimeout(ITEMS_CSV_URL)
+      .then((text) =>
+        csvToObjects(text)
+          .map(normalizeItem)
+          .sort((a, b) => itemSequence(a) - itemSequence(b))
+      )
+      .catch((error) => {
+        sheetItemsPromise = undefined;
+        throw error;
+      });
+  }
+  return sheetItemsPromise;
 }
+
+let projectsPromise;
 
 export async function fetchItems() {
   try {
@@ -176,7 +165,11 @@ export async function fetchHomeItems() {
 
 export async function fetchProjects() {
   try {
-    const data = await fetchJsonWithTimeout(`${API_BASE}projects`);
+    projectsPromise ||= fetchJsonWithTimeout(`${API_BASE}projects`).catch((error) => {
+      projectsPromise = undefined;
+      throw error;
+    });
+    const data = await projectsPromise;
     return data.projects || [];
   } catch (error) {
     console.error("Error fetching projects:", error);

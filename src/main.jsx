@@ -26,6 +26,7 @@ const router = createBrowserRouter(
       path: "/",
       element: <MainLayout />,
       hydrateFallbackElement: <div />,
+      errorElement: <NotFound />,
       children: [
         {
           index: true,
@@ -54,6 +55,10 @@ const router = createBrowserRouter(
         {
           path: "/about",
           element: lazyPage(AboutPage)
+        },
+        {
+          path: "*",
+          element: <NotFound />
         }
       ]
     }
