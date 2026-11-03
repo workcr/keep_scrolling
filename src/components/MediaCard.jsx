@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   browserVideoConditions,
+  gifVideoSource,
   optimizedVideoSource,
   responsiveImageSrcSet
 } from "../mediaOptimization";
@@ -171,6 +172,48 @@ function vimeoOrigin(src) {
   } catch {
     return "*";
   }
+}
+
+// Plays a GIF's MP4 replacement like a GIF: silent, looping, inline, and only
+// fetched once it is near the viewport (the <img> it replaces was lazy too).
+function GifVideo({ src, label, eager, style, className, onError }) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(eager);
+
+  useEffect(() => {
+    if (eager) return undefined;
+    const element = ref.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [eager]);
+
+  return (
+    <video
+      ref={ref}
+      src={visible ? src : undefined}
+      aria-label={label}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload={visible ? "auto" : "none"}
+      className={className}
+      style={style}
+      onError={onError}
+    />
+  );
 }
 
 export default function MediaCard(item) {
@@ -471,6 +514,37 @@ export default function MediaCard(item) {
   }, []);
 
   if (!item.src || errored) return null;
+
+  const gifVideoSrc = mediaType !== "video" ? gifVideoSource(src) : undefined;
+  if (gifVideoSrc) {
+    const aspectRatio = aspectRatioValue(item);
+    const video = (
+      <GifVideo
+        src={gifVideoSrc}
+        label={item.alt || ""}
+        eager={loadingMode === "eager"}
+        className={projectMedia ? "project-media-image" : undefined}
+        style={projectMedia ? { aspectRatio } : { ...sharedStyle, aspectRatio }}
+        onError={() => setErrored(true)}
+      />
+    );
+    if (projectMedia) {
+      return (
+        <button
+          type="button"
+          className="project-media-shell"
+          data-expanded={projectExpanded ? "true" : undefined}
+          onClick={toggleProjectMedia}
+          style={{
+            width: `min(${projectExpanded ? "90vw" : "40vw"}, ${(aspectRatio * (projectExpanded ? 100 : 70)).toFixed(3)}dvh)`
+          }}
+        >
+          {video}
+        </button>
+      );
+    }
+    return <div style={{ width: "100%" }}>{video}</div>;
+  }
 
   if (mediaType === "video") {
     const paddingBottom = aspectRatioPadding(item);

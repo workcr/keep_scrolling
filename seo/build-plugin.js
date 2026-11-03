@@ -134,6 +134,7 @@ function personNode() {
     image: `${SITE.url}${SITE.image}`,
     description: ABOUT_TEXT[0],
     sameAs: SITE.sameAs,
+    email: `mailto:${SITE.email}`,
     knowsAbout: SITE.knowsAbout,
     award: SITE.awards
   };
@@ -196,7 +197,7 @@ function buildPages(projects, base) {
           isPartOf: { "@id": `${SITE.url}/#website` }
         }
       ],
-      body: `${header(`About ${SITE.name}`)}<main>${about}<p><a href="${escapeHtml(SITE.sameAs[0])}" rel="me">LinkedIn</a></p></main>`
+      body: `${header(`About ${SITE.name}`)}<main>${about}<h2>Contact</h2><ul><li><a href="mailto:${escapeHtml(SITE.email)}">Email: ${escapeHtml(SITE.email)}</a></li><li><a href="${escapeHtml(SITE.instagram)}" rel="me">Instagram</a></li><li><a href="${escapeHtml(SITE.linkedin)}" rel="me">LinkedIn</a></li></ul></main>`
     },
     {
       route: "/gallery",
@@ -380,6 +381,7 @@ ${ABOUT_TEXT.join("\n\n")}
 ## Pages
 
 - [About](${SITE.url}/about): Biography, background and contact links.
+- Contact: ${SITE.email}
 - [Gallery](${SITE.url}/gallery): All work in one scrolling grid.
 - [Filters](${SITE.url}/filters): Browse by client, project, category and discipline.
 

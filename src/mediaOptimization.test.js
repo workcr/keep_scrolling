@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { optimizedVideoSource, responsiveImageSrcSet } from "./mediaOptimization";
+import { gifVideoSource, optimizedVideoSource, responsiveImageSrcSet } from "./mediaOptimization";
 
 describe("media optimization", () => {
   it("builds width-based WebP candidates for optimized R2 images", () => {
@@ -31,5 +31,14 @@ describe("media optimization", () => {
         effectiveType: "4g"
       })
     ).toBe("/media/optimized/SJC_SURF_OVERDOSE_VHS_V2-1280.mp4");
+  });
+});
+
+describe("gifVideoSource", () => {
+  it("maps converted GIFs to their MP4 and leaves others alone", () => {
+    expect(gifVideoSource("/assets/dtms_portfolio_01.gif")).toBe("/media/gif/dtms_portfolio_01.mp4");
+    expect(gifVideoSource("/assets/Octa-grid%20animation%202.gif")).toBe("/media/gif/Octa-grid%20animation%202.mp4");
+    expect(gifVideoSource("/assets/Guarana_1920x1080_Latas.gif")).toBeUndefined();
+    expect(gifVideoSource("/assets/photo.webp")).toBeUndefined();
   });
 });

@@ -17,6 +17,30 @@ const VIDEO_RENDITIONS = {
   ]
 };
 
+// GIFs re-encoded as H.264 MP4 (public/media/gif). The sheet can keep pointing
+// at the .gif; MediaCard plays the much smaller MP4 instead. Only files where
+// the MP4 saved at least 20% are listed.
+const GIF_VIDEOS = new Set([
+  "Octa-grid animation 2.gif",
+  "Octa-grid-animation-2-1600p.gif",
+  "Octa-grid-animation-2-320p.gif",
+  "Octa-grid-animation-2-640p.gif",
+  "Octa-grid-animation-2-960p.gif",
+  "Octagrid_3D_7-1080p.gif",
+  "Octagrid_3D_7-320p.gif",
+  "Octagrid_3D_7-640p.gif",
+  "Octagrid_3D_7-960p.gif",
+  "dtms_portfolio_01-1600p.gif",
+  "dtms_portfolio_01-320p.gif",
+  "dtms_portfolio_01-640p.gif",
+  "dtms_portfolio_01-960p.gif",
+  "dtms_portfolio_01.gif",
+  "dtms_portfolio_02-1600p.gif",
+  "dtms_portfolio_02-640p.gif",
+  "dtms_portfolio_02-960p.gif",
+  "dtms_portfolio_03.gif",
+]);
+
 function fileNameFromUrl(src) {
   if (!src) return "";
   try {
@@ -69,4 +93,10 @@ export function browserVideoConditions(projectMedia = false) {
     effectiveType: connection?.effectiveType,
     saveData: connection?.saveData === true
   };
+}
+
+export function gifVideoSource(src) {
+  const fileName = fileNameFromUrl(src);
+  if (!GIF_VIDEOS.has(fileName)) return undefined;
+  return `${BASE_URL}media/gif/${encodeURIComponent(stem(fileName))}.mp4`;
 }

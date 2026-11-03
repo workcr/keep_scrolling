@@ -12,7 +12,10 @@ export const SITE = {
   image: "/og-image.jpg",
   imageAlt: "Portrait of Rodrigo Mendes against a red-orange background",
   locale: "en_US",
-  sameAs: ["https://www.linkedin.com/in/rodrigo-mendes-4029b821"],
+  email: "rmnds1@gmail.com",
+  instagram: "https://www.instagram.com/rmnds1/",
+  linkedin: "https://www.linkedin.com/in/rodrigo-mendes-4029b821",
+  sameAs: ["https://www.linkedin.com/in/rodrigo-mendes-4029b821", "https://www.instagram.com/rmnds1/"],
   knowsAbout: [
     "Creative Direction",
     "Art Direction",

@@ -42,13 +42,13 @@ export default function AboutPage() {
           </div>
           <div className="about-label">Let&apos;s talk</div>
           <div className="about-links">
-            <a href="#" className="about-link">
+            <a href={`mailto:${SITE.email}`} className="about-link">
               Email
             </a>
-            <a href="#" className="about-link">
+            <a href={SITE.instagram} className="about-link" rel="me">
               Instagram
             </a>
-            <a href="https://www.linkedin.com/in/rodrigo-mendes-4029b821" className="about-link" rel="me">
+            <a href={SITE.linkedin} className="about-link" rel="me">
               LinkedIn
             </a>
           </div>
