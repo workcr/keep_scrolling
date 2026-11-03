@@ -25,29 +25,33 @@ Google Sheet. If the developer owns it, you need your own copy.
      nobody else should be able to change it.)
    - Click **Done**.
 
-**Tabs:** the row of names at the bottom of the screen are the tabs. The
-**media tab** is the first one: the tab whose columns include `id`, `src` and
-`alt`. Check whether a tab named **projects** already exists.
+**Tabs:** the names along the bottom of the screen. The site reads two of them:
+
+- **Sheet1**: the list of images and videos (columns `id`, `src`, `alt`…).
+  Keep it as the first tab and don't delete it. "Copy of Sheet1", "Links" and
+  "To-Do List" are not used by the site.
+- **projects**: project descriptions. You create it in Step 2.
 
 ---
 
 ## Step 2: Add project descriptions (the `projects` tab)
 
-You need the file **projects-tab-draft.csv**. It was attached in the chat, and
-it's also here (click **Download raw file**, the ↓ icon, top right of the file):
-https://github.com/workcr/keep_scrolling/blob/claude/epic-ramanujan-1ecyyx/docs/projects-tab-draft.csv
+No file needed. You paste the text instead.
 
-**If there is no `projects` tab yet:**
-
-1. In the sheet: **File → Import → Upload** → choose `projects-tab-draft.csv`.
-2. **Import location:** choose **Insert new sheet(s)** → **Import data**.
-3. A new tab appears at the bottom. Double-click its name and rename it to
-   exactly `projects` (lowercase).
-4. In column B, replace every `[...]` with real text: 2–3 sentences about the
+1. At the bottom left of the sheet, click **+** to add a new tab.
+2. Double-click the new tab's name and rename it to exactly `projects`
+   (lowercase, no spaces). Press Enter.
+3. Click cell **A1** of the new tab.
+4. Copy the block of text Claude gave you in the chat (16 lines plus a header,
+   with a `|` between the project name and the description) and paste it
+   (**⌘V** on Mac).
+5. With column A still selected, open **Data → Split text to columns**. A small
+   **Separator** box appears near the bottom: choose **Custom** and type `|`.
+   The descriptions move into column B.
+6. Check: A1 says `project`, B1 says `description`, and column A has 16
+   project names in lowercase.
+7. In column B, replace every `[...]` with real text: 2–3 sentences about the
    work, your role, and the result. Don't change column A or row 1.
-
-**If a `projects` tab already exists:** don't import. Check that row 1 says
-`project` and `description`, and fill in the descriptions there.
 
 Alt text: **nothing to do.** The site now uses the new alt text automatically
 wherever the sheet still says "This image needs a description."
