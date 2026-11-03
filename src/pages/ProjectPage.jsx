@@ -116,7 +116,8 @@ export default function ProjectPage() {
       <div className="px-8 lg:px-4 grid grid-cols-3 lg:grid-cols-2 lg:w-1/2 project-info-block">
         <div>Project info</div>
         <div className="space-y-12 col-span-2 lg:col-span-1">
-          <p>{project.description}</p>
+          {/* pre-line keeps line breaks typed in the sheet (e.g. credit lists). */}
+          <p style={{ whiteSpace: "pre-line" }}>{project.description}</p>
           <div className="space-x-4">
             <button type="button">Link</button>
             <button type="button">Share</button>

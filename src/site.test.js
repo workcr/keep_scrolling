@@ -27,3 +27,17 @@ describe("emailHref", () => {
     expect(emailHref()).toBe("mailto:rmnds1" + "@gmail.com");
   });
 });
+
+describe("summarize", () => {
+  it("leaves short text alone and flattens line breaks", async () => {
+    const { summarize } = await import("./site");
+    expect(summarize("Isku brand.\nCaio - Owner")).toBe("Isku brand. Caio - Owner");
+  });
+
+  it("cuts long text at a word boundary within the limit", async () => {
+    const { summarize } = await import("./site");
+    const out = summarize("word ".repeat(60));
+    expect(out.length).toBeLessThanOrEqual(160);
+    expect(out.endsWith("word…")).toBe(true);
+  });
+});

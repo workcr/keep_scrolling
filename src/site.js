@@ -49,8 +49,19 @@ export function projectTitle(project) {
   return `${titleCase(project)} — ${SITE.name}`;
 }
 
+// Search results show roughly 155-160 characters. Long sheet descriptions
+// (with line breaks, credit lists, etc.) are flattened to one line and cut at
+// a word boundary so the snippet ends cleanly instead of mid-word.
+export function summarize(text, max = 160) {
+  const flat = String(text || "").replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max - 1);
+  const atWord = cut.slice(0, cut.lastIndexOf(" ")).replace(/[\s,;:.—–-]+$/, "");
+  return `${atWord || cut}…`;
+}
+
 export function projectDescription({ project, client, category, discipline, description } = {}) {
-  if (description && String(description).trim()) return String(description).trim().slice(0, 300);
+  if (description && String(description).trim()) return summarize(description);
   const parts = [titleCase(project)];
   if (client) parts.push(`for ${titleCase(client)}`);
   const kinds = [category, discipline].filter(Boolean).map((value) => String(value).toLowerCase());

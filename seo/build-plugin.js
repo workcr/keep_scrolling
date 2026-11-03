@@ -230,6 +230,9 @@ function buildPages(projects, base) {
   for (const project of projects) {
     const title = projectTitle(project.name);
     const description = projectDescription(project);
+    // Full text for crawlers and structured data; the short version is only
+    // for the search-result snippet (<meta name="description">).
+    const fullText = project.description ? project.description.replace(/\s+/g, " ").trim() : description;
     const url = `${SITE.url}/project/${project.slug}`;
     const images = project.images.map((image) => image.src);
     const imageList = project.images
@@ -251,7 +254,7 @@ function buildPages(projects, base) {
           "@id": `${url}#work`,
           url,
           name: titleCase(project.name),
-          description,
+          description: fullText,
           creator: { "@id": `${SITE.url}/#person` },
           ...(project.client ? { sourceOrganization: { "@type": "Organization", name: titleCase(project.client) } } : {}),
           ...(project.category || project.discipline
@@ -262,7 +265,7 @@ function buildPages(projects, base) {
           isPartOf: { "@id": `${SITE.url}/#website` }
         }
       ],
-      body: `${header(titleCase(project.name))}<main><p>${escapeHtml(description)}</p>${
+      body: `${header(titleCase(project.name))}<main><p>${escapeHtml(project.description || description).replace(/\n/g, "<br>")}</p>${
         imageList ? `<ul>${imageList}</ul>` : ""
       }<h2>More projects</h2>${projectLinks(projects.filter((other) => other.slug !== project.slug), base)}</main>`
     });
@@ -370,7 +373,7 @@ Sitemap: ${SITE.url}/sitemap.xml
 
 function llmsTxt(projects) {
   const list = projects
-    .map((project) => `- [${titleCase(project.name)}](${SITE.url}/project/${project.slug}): ${projectDescription(project)}`)
+    .map((project) => `- [${titleCase(project.name)}](${SITE.url}/project/${project.slug}): ${project.description ? project.description.replace(/\s+/g, " ").trim() : projectDescription(project)}`)
     .join("\n");
   return `# ${SITE.name} — ${SITE.jobTitle}
 
