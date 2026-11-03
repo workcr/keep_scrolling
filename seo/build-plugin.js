@@ -11,11 +11,13 @@
 // The browser app still boots normally from every one of these files.
 import fs from "node:fs";
 import path from "node:path";
-import { csvToObjects } from "../src/csv.js";
+import { csvToObjects, projectsFromCsv } from "../src/csv.js";
 import { SITE, projectDescription, projectTitle, titleCase } from "../src/site.js";
 
 const DEFAULT_ITEMS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/export?format=csv&gid=0";
+const DEFAULT_PROJECTS_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/gviz/tq?tqx=out:csv&sheet=projects";
 const FETCH_TIMEOUT_MS = 15000;
 
 const ABOUT_TEXT = [
@@ -74,18 +76,24 @@ async function loadItems(rootDir, csvUrl, log) {
   return JSON.parse(fs.readFileSync(path.join(rootDir, "src/data/scroll-items.json"), "utf8"));
 }
 
-async function loadProjectDescriptions(apiBase, log) {
-  if (!apiBase) return new Map();
-  try {
-    const base = apiBase.endsWith("/") ? apiBase : `${apiBase}/`;
-    const data = JSON.parse(await fetchText(`${base}projects`));
-    return new Map(
-      (data.projects || [])
+async function loadProjectDescriptions(projectsCsvUrl, apiBase, log) {
+  const toMap = (projects) =>
+    new Map(
+      projects
         .filter((entry) => entry.project)
         .map((entry) => [String(entry.project).trim().toLowerCase(), String(entry.description || "").trim()])
     );
+  try {
+    return toMap(projectsFromCsv(await fetchText(projectsCsvUrl)));
   } catch (error) {
-    log(`seo: project descriptions unavailable (${error.message})`);
+    log(`seo: projects tab unavailable (${error.message})`);
+  }
+  if (!apiBase) return new Map();
+  try {
+    const base = apiBase.endsWith("/") ? apiBase : `${apiBase}/`;
+    return toMap(JSON.parse(await fetchText(`${base}projects`)).projects || []);
+  } catch (error) {
+    log(`seo: Sheety project descriptions unavailable (${error.message})`);
     return new Map();
   }
 }
@@ -415,7 +423,11 @@ export default function seoBuildPlugin() {
       const noindex = config.mode !== "production" || base !== "/";
 
       const items = await loadItems(config.root, env.VITE_ITEMS_CSV_URL || DEFAULT_ITEMS_CSV_URL, log);
-      const descriptions = await loadProjectDescriptions(env.VITE_API_BASE, log);
+      const descriptions = await loadProjectDescriptions(
+        env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL,
+        env.VITE_API_BASE,
+        log
+      );
       const projects = groupProjects(items, descriptions);
       const pages = buildPages(projects, base);
       const template = fs.readFileSync(templatePath, "utf8");

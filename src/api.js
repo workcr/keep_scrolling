@@ -1,11 +1,17 @@
 import localScrollItems from "./data/scroll-items.json";
-import { csvToObjects } from "./csv";
+import { csvToObjects, projectsFromCsv } from "./csv";
 import { titleCase } from "./site";
 
 const DEFAULT_API_BASE = "https://api.sheety.co/55ad31708c31d543a624b88053f567d9/backend/";
 const DEFAULT_ITEMS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/export?format=csv&gid=0";
-const configuredBase = String(import.meta.env.VITE_API_BASE || DEFAULT_API_BASE).trim();
+// Project descriptions live in the "projects" tab of the same Google Sheet,
+// exported by tab name. Sheety is only a fallback while that is confirmed;
+// set VITE_API_BASE to an empty value to stop calling it.
+const DEFAULT_PROJECTS_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/gviz/tq?tqx=out:csv&sheet=projects";
+const PROJECTS_CSV_URL = String(import.meta.env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL).trim();
+const configuredBase = String(import.meta.env.VITE_API_BASE ?? DEFAULT_API_BASE).trim();
 const API_BASE = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
 const ITEMS_CSV_URL = String(import.meta.env.VITE_ITEMS_CSV_URL || DEFAULT_ITEMS_CSV_URL).trim();
 const REQUEST_TIMEOUT_MS = 8000;
@@ -165,12 +171,19 @@ export async function fetchHomeItems() {
 
 export async function fetchProjects() {
   try {
-    projectsPromise ||= fetchJsonWithTimeout(`${API_BASE}projects`).catch((error) => {
-      projectsPromise = undefined;
-      throw error;
-    });
-    const data = await projectsPromise;
-    return data.projects || [];
+    projectsPromise ||= fetchTextWithTimeout(PROJECTS_CSV_URL)
+      .then(projectsFromCsv)
+      .catch(async (error) => {
+        if (!configuredBase) throw error;
+        console.warn("Projects tab unavailable, falling back to Sheety:", error.message);
+        const data = await fetchJsonWithTimeout(`${API_BASE}projects`);
+        return data.projects || [];
+      })
+      .catch((error) => {
+        projectsPromise = undefined;
+        throw error;
+      });
+    return await projectsPromise;
   } catch (error) {
     console.error("Error fetching projects:", error);
     return fallbackProjectsFromItems(fallbackItems());
