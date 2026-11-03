@@ -106,6 +106,9 @@ jobs:
 
           RewriteEngine On
           RewriteBase /
+          # One canonical host: send www.keep-scrolling.com to keep-scrolling.com.
+          RewriteCond %{HTTP_HOST} ^www\.keep-scrolling\.com$ [NC]
+          RewriteRule ^(.*)$ https://keep-scrolling.com/$1 [R=301,L]
           RewriteRule ^index\.html$ - [L]
           # Prerendered routes: /about -> about.html, /project/x -> project/x.html
           RewriteCond %{REQUEST_FILENAME} !-f

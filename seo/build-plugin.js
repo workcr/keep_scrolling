@@ -11,6 +11,7 @@
 // The browser app still boots normally from every one of these files.
 import fs from "node:fs";
 import path from "node:path";
+import { createAltLookup } from "../src/altText.js";
 import { csvToObjects, projectsFromCsv } from "../src/csv.js";
 import { SITE, projectDescription, projectTitle, titleCase } from "../src/site.js";
 
@@ -76,24 +77,16 @@ async function loadItems(rootDir, csvUrl, log) {
   return JSON.parse(fs.readFileSync(path.join(rootDir, "src/data/scroll-items.json"), "utf8"));
 }
 
-async function loadProjectDescriptions(projectsCsvUrl, apiBase, log) {
-  const toMap = (projects) =>
-    new Map(
-      projects
-        .filter((entry) => entry.project)
-        .map((entry) => [String(entry.project).trim().toLowerCase(), String(entry.description || "").trim()])
-    );
+async function loadProjectDescriptions(projectsCsvUrl, log) {
   try {
-    return toMap(projectsFromCsv(await fetchText(projectsCsvUrl)));
+    return new Map(
+      projectsFromCsv(await fetchText(projectsCsvUrl)).map((entry) => [
+        String(entry.project).trim().toLowerCase(),
+        String(entry.description || "").trim()
+      ])
+    );
   } catch (error) {
     log(`seo: projects tab unavailable (${error.message})`);
-  }
-  if (!apiBase) return new Map();
-  try {
-    const base = apiBase.endsWith("/") ? apiBase : `${apiBase}/`;
-    return toMap(JSON.parse(await fetchText(`${base}projects`)).projects || []);
-  } catch (error) {
-    log(`seo: Sheety project descriptions unavailable (${error.message})`);
     return new Map();
   }
 }
@@ -102,7 +95,7 @@ function field(item, key) {
   return String(item[key] ?? item[`data-${key}`] ?? "").trim();
 }
 
-function groupProjects(items, descriptions) {
+function groupProjects(items, descriptions, altLookup) {
   const projects = new Map();
   for (const item of items) {
     const name = field(item, "project");
@@ -123,7 +116,7 @@ function groupProjects(items, descriptions) {
       });
     }
     const project = projects.get(slug);
-    const alt = /needs a description/i.test(item.alt || "") ? "" : String(item.alt || "").trim();
+    const alt = altLookup(item.alt, item.src);
     const src = absoluteUrl(item.src);
     if (!src) continue;
     if (type === "video") project.videos.push({ src, alt });
@@ -142,7 +135,6 @@ function personNode() {
     image: `${SITE.url}${SITE.image}`,
     description: ABOUT_TEXT[0],
     sameAs: SITE.sameAs,
-    email: `mailto:${SITE.email}`,
     knowsAbout: SITE.knowsAbout,
     award: SITE.awards
   };
@@ -205,7 +197,7 @@ function buildPages(projects, base) {
           isPartOf: { "@id": `${SITE.url}/#website` }
         }
       ],
-      body: `${header(`About ${SITE.name}`)}<main>${about}<h2>Contact</h2><ul><li><a href="mailto:${escapeHtml(SITE.email)}">Email: ${escapeHtml(SITE.email)}</a></li><li><a href="${escapeHtml(SITE.instagram)}" rel="me">Instagram</a></li><li><a href="${escapeHtml(SITE.linkedin)}" rel="me">LinkedIn</a></li></ul></main>`
+      body: `${header(`About ${SITE.name}`)}<main>${about}<h2>Contact</h2><ul><li><a href="${escapeHtml(SITE.instagram)}" rel="me">Instagram</a></li><li><a href="${escapeHtml(SITE.linkedin)}" rel="me">LinkedIn</a></li></ul></main>`
     },
     {
       route: "/gallery",
@@ -389,7 +381,6 @@ ${ABOUT_TEXT.join("\n\n")}
 ## Pages
 
 - [About](${SITE.url}/about): Biography, background and contact links.
-- Contact: ${SITE.email}
 - [Gallery](${SITE.url}/gallery): All work in one scrolling grid.
 - [Filters](${SITE.url}/filters): Browse by client, project, category and discipline.
 
@@ -423,12 +414,9 @@ export default function seoBuildPlugin() {
       const noindex = config.mode !== "production" || base !== "/";
 
       const items = await loadItems(config.root, env.VITE_ITEMS_CSV_URL || DEFAULT_ITEMS_CSV_URL, log);
-      const descriptions = await loadProjectDescriptions(
-        env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL,
-        env.VITE_API_BASE,
-        log
-      );
-      const projects = groupProjects(items, descriptions);
+      const descriptions = await loadProjectDescriptions(env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL, log);
+      const localItems = JSON.parse(fs.readFileSync(path.join(config.root, "src/data/scroll-items.json"), "utf8"));
+      const projects = groupProjects(items, descriptions, createAltLookup(localItems));
       const pages = buildPages(projects, base);
       const template = fs.readFileSync(templatePath, "utf8");
 

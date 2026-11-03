@@ -1,18 +1,16 @@
 import localScrollItems from "./data/scroll-items.json";
+import { createAltLookup } from "./altText";
 import { csvToObjects, projectsFromCsv } from "./csv";
 import { titleCase } from "./site";
 
-const DEFAULT_API_BASE = "https://api.sheety.co/55ad31708c31d543a624b88053f567d9/backend/";
 const DEFAULT_ITEMS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/export?format=csv&gid=0";
 // Project descriptions live in the "projects" tab of the same Google Sheet,
-// exported by tab name. Sheety is only a fallback while that is confirmed;
-// set VITE_API_BASE to an empty value to stop calling it.
+// exported by tab name. (They used to come from Sheety, an account outside
+// the site owner's control, so it is no longer used at all.)
 const DEFAULT_PROJECTS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/gviz/tq?tqx=out:csv&sheet=projects";
 const PROJECTS_CSV_URL = String(import.meta.env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL).trim();
-const configuredBase = String(import.meta.env.VITE_API_BASE ?? DEFAULT_API_BASE).trim();
-const API_BASE = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
 const ITEMS_CSV_URL = String(import.meta.env.VITE_ITEMS_CSV_URL || DEFAULT_ITEMS_CSV_URL).trim();
 const REQUEST_TIMEOUT_MS = 8000;
 
@@ -23,14 +21,14 @@ function pick(...values) {
   return undefined;
 }
 
-const PLACEHOLDER_ALT = /needs a description/i;
+const localAlt = createAltLookup(localScrollItems || []);
 
 // Many sheet rows still carry "This image needs a description." as alt text.
 // That is worse than nothing for screen readers and image search, so derive a
 // short factual label from the row until a real description is written.
-function describeMedia(alt, { mediaType, project, client }) {
-  const text = String(alt || "").trim();
-  if (text && !PLACEHOLDER_ALT.test(text)) return text;
+function describeMedia(alt, { src, mediaType, project, client }) {
+  const text = localAlt(alt, src);
+  if (text) return text;
   if (!project) return "";
   const kind = String(mediaType || "").toLowerCase() === "video" ? "Video" : "Image";
   const byClient = client && String(client).toLowerCase() !== String(project).toLowerCase()
@@ -48,7 +46,7 @@ function normalizeItem(item) {
 
   return {
     ...item,
-    alt: describeMedia(item.alt, { mediaType, project, client }),
+    alt: describeMedia(item.alt, { src: item.src, mediaType, project, client }),
     mediaType,
     client,
     project,
@@ -96,20 +94,6 @@ function fallbackProjectsFromItems(items) {
     }
   }
   return Array.from(map.values());
-}
-
-async function fetchJsonWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
-    }
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function fetchTextWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -173,12 +157,6 @@ export async function fetchProjects() {
   try {
     projectsPromise ||= fetchTextWithTimeout(PROJECTS_CSV_URL)
       .then(projectsFromCsv)
-      .catch(async (error) => {
-        if (!configuredBase) throw error;
-        console.warn("Projects tab unavailable, falling back to Sheety:", error.message);
-        const data = await fetchJsonWithTimeout(`${API_BASE}projects`);
-        return data.projects || [];
-      })
       .catch((error) => {
         projectsPromise = undefined;
         throw error;

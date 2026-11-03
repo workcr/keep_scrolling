@@ -18,9 +18,9 @@ RedirectMatch 404 /\.(?!well-known/)
   Header always set Strict-Transport-Security "max-age=31536000"
   # Scripts may only come from this site. Media is allowed from any HTTPS host
   # because the Google Sheet decides where images/videos live (R2 today).
-  # Data comes from Google Sheets (which redirects to googleusercontent.com)
-  # and Sheety. Vimeo is allowed as a frame for any embeds left in the sheet.
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self' https://docs.google.com https://*.googleusercontent.com https://api.sheety.co; frame-src https://player.vimeo.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; upgrade-insecure-requests"
+  # Data comes from Google Sheets (which redirects to googleusercontent.com).
+  # Vimeo is allowed as a frame for any embeds left in the sheet.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self' https://docs.google.com https://*.googleusercontent.com; frame-src https://player.vimeo.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; upgrade-insecure-requests"
   Header unset X-Powered-By
 </IfModule>
 

@@ -20,3 +20,10 @@ describe("projectDescription", () => {
     ).toBe("Surf Overdose for Surf Junkie Club — design, fashion design work by Creative Director Rodrigo Mendes.");
   });
 });
+
+describe("emailHref", () => {
+  it("assembles the mailto link at click time", async () => {
+    const { emailHref } = await import("./site");
+    expect(emailHref()).toBe("mailto:rmnds1" + "@gmail.com");
+  });
+});

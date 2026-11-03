@@ -12,7 +12,10 @@ export const SITE = {
   image: "/og-image.jpg",
   imageAlt: "Portrait of Rodrigo Mendes against a red-orange background",
   locale: "en_US",
-  email: "rmnds1@gmail.com",
+  // Stored in pieces so the address never appears as "name@domain" in the
+  // page source or JavaScript bundle, where spam bots harvest addresses.
+  // It is assembled only when a visitor clicks "Email" (see emailHref).
+  emailParts: ["rmnds1", "gmail.com"],
   instagram: "https://www.instagram.com/rmnds1/",
   linkedin: "https://www.linkedin.com/in/rodrigo-mendes-4029b821",
   sameAs: ["https://www.linkedin.com/in/rodrigo-mendes-4029b821", "https://www.instagram.com/rmnds1/"],
@@ -53,4 +56,9 @@ export function projectDescription({ project, client, category, discipline, desc
   const kinds = [category, discipline].filter(Boolean).map((value) => String(value).toLowerCase());
   const kindText = kinds.length ? ` ${[...new Set(kinds)].join(", ")}` : "";
   return `${parts.join(" ")} —${kindText} work by Creative Director ${SITE.name}.`;
+}
+
+export function emailHref() {
+  const [user, domain] = SITE.emailParts;
+  return ["mailto:", user, String.fromCharCode(64), domain].join("");
 }

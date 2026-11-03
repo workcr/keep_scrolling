@@ -1,5 +1,5 @@
 import Seo from "../components/Seo";
-import { SITE } from "../site";
+import { SITE, emailHref } from "../site";
 
 export default function AboutPage() {
   return (
@@ -42,7 +42,14 @@ export default function AboutPage() {
           </div>
           <div className="about-label">Let&apos;s talk</div>
           <div className="about-links">
-            <a href={`mailto:${SITE.email}`} className="about-link">
+            <a
+              href="#email"
+              className="about-link"
+              onClick={(event) => {
+                event.preventDefault();
+                window.location.href = emailHref();
+              }}
+            >
               Email
             </a>
             <a href={SITE.instagram} className="about-link" rel="me">
