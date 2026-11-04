@@ -5,6 +5,7 @@ import {
   optimizedVideoSource,
   responsiveImageSrcSet
 } from "../mediaOptimization";
+import { isSoundEnabled, useSoundEnabled } from "../soundPreference";
 
 const KNOWN_VIMEO_HASHES = {
   "1055304584": "c4a306474a"
@@ -418,10 +419,20 @@ export default function MediaCard(item) {
     sendVideoCommand("play");
   }, [isVimeoVideo, sendVideoCommand]);
 
+  // Hover only plays sound once the visitor has turned it on (Sound button).
+  const soundEnabled = useSoundEnabled();
+  const enableHoverAudio = useCallback(() => {
+    if (isSoundEnabled()) enableAudio();
+  }, [enableAudio]);
+
   const disableAudio = useCallback(() => {
     sendVideoCommand("setVolume", 0);
     sendVideoCommand("setMuted", true);
   }, [sendVideoCommand]);
+
+  useEffect(() => {
+    if (!soundEnabled && interactionMode === "hover" && mediaType === "video") disableAudio();
+  }, [disableAudio, interactionMode, mediaType, soundEnabled]);
 
   const toggleProjectVideo = useCallback(() => {
     if (clickPlaying) {
@@ -576,9 +587,9 @@ export default function MediaCard(item) {
     const hoverProps =
       interactionMode === "hover"
         ? {
-            onMouseEnter: enableAudio,
+            onMouseEnter: enableHoverAudio,
             onMouseLeave: disableAudio,
-            onFocus: enableAudio,
+            onFocus: enableHoverAudio,
             onBlur: disableAudio
           }
         : {};
