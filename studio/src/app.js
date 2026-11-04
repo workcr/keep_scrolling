@@ -10,7 +10,10 @@
 //   PUT    /api/project-drafts/:name       save a project description
 //   GET    /api/content                    what's live: Sheet1 + projects tab + spacing warnings
 //   PATCH  /api/items/:id                  edit a live item's text in Sheet1
-//   POST   /api/publish                    { draftIds, dryRun } -> preview or publish
+//   PUT    /api/projects/:name             edit a live project's description (projects tab)
+//   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
+//                                          openerDraftId: piece to open the site with
+//                                          (default: the first draft; null keeps the current opener)
 
 import { authenticate } from "./lib/access.js";
 import { triggerSiteDeploy } from "./lib/github.js";
@@ -310,7 +313,15 @@ async function publish(request, env, deps) {
 
   const first = nextItemNumber(tab.rows.map((row) => row.id));
   const placed = drafts.map((draft, n) => ({ draft, id: `scroll-item-${first + n}` }));
-  const plan = planSequence(existingItems(tab), placed.map(({ draft, id }) => ({ id, project: draft.project })));
+  // Every publish refreshes the opener unless openerDraftId is explicitly null.
+  const openerDraftId = input.openerDraftId === undefined ? drafts[0].id : input.openerDraftId;
+  const opener = openerDraftId === null ? null : placed.find(({ draft }) => draft.id === openerDraftId);
+  if (openerDraftId !== null && !opener) throw new HttpError(400, "The opening piece must be one of the drafts being published.");
+  const plan = planSequence(
+    existingItems(tab),
+    placed.map(({ draft, id }) => ({ id, project: draft.project })),
+    { openerId: opener?.id }
+  );
   const wide = chooseWide(placed.map(({ draft, id }) => ({ id, kind: draft.kind, width: draft.width, height: draft.height })));
   const warnings = [...plan.warnings];
   for (const { draft } of placed) if (!draft.alt) warnings.push(`${draft.file_name} has no alt text.`);
@@ -320,14 +331,23 @@ async function publish(request, env, deps) {
     id,
     position: plan.sequence.indexOf(id) + 1,
     order: plan.orders[id],
-    wide: wide.has(id)
+    wide: wide.has(id),
+    opener: opener?.id === id
   }));
-  if (input.dryRun) return json({ dryRun: true, preview, sequence: plan.sequence, warnings });
+  if (input.dryRun) return json({ dryRun: true, preview, moved: plan.moved, sequence: plan.sequence, warnings });
 
   await sheets.appendRows(
     itemsTab,
     placed.map(({ draft, id }) => toRow(rowValues(draft, { id, order: plan.orders[id], wide: wide.has(id) }), tab.headers))
   );
+  // The previous opener keeps its row; only its position (order) changes.
+  if (plan.moved) {
+    const row = tab.rows.find((entry) => entry.id === plan.moved.id);
+    if (row) {
+      await sheets.updateCells(itemsTab, [{ row: row._row, column: tab.headers.indexOf("order"), value: String(plan.moved.order) }]);
+    }
+  }
+
   const time = nowIso();
   for (const { draft, id } of placed) {
     await env.DB.prepare("UPDATE drafts SET status = 'published', sheet_id = ?, published_at = ?, updated_at = ? WHERE id = ?")
@@ -345,7 +365,18 @@ async function publish(request, env, deps) {
 
   const deploy = await triggerSiteDeploy(env, deps.fetch);
   if (!deploy.ok) warnings.push(`Published to the sheet, but the site redeploy didn't start: ${deploy.reason}`);
-  return json({ published: preview, warnings, deploy });
+  return json({ published: preview, moved: plan.moved, warnings, deploy });
+}
+
+async function editProjectDescription(request, env, deps, name) {
+  const input = await body(request);
+  const project = String(input.project || name).trim();
+  if (!project) throw new HttpError(400, "project is required.");
+  const sheets = sheetsFor(env, deps);
+  const { projectsTab } = config(env);
+  const warnings = await writeProjectDescriptions(sheets, projectsTab, [{ project, description: String(input.description || "").trim() }]);
+  if (warnings.length) throw new HttpError(409, warnings.join(" "));
+  return json({ updated: project });
 }
 
 // ---- router ---------------------------------------------------------------
@@ -374,6 +405,7 @@ export async function handle(request, env, deps = {}) {
     }
     if (parts[0] === "content" && method === "GET") return await readContent(env, deps);
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));
+    if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);
     return json({ error: "Not found." }, 404);
   } catch (error) {

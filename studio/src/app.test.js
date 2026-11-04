@@ -1,22 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import scrollItems from "../../src/data/scroll-items.json";
 import { handle } from "./app.js";
+import { SHEET_HEADERS, sampleSheet } from "./dev/fakeSheets.js";
 import { fakeD1, fakeR2, fakeSheets } from "./test/fakes.js";
 
 const BASE = "http://localhost:8787";
-const HEADERS = [
-  "id", "class", "data-media-type", "src", "srcset", "content", "alt", "style", "data-width", "data-height",
-  "data-aspect-ratio", "data-orientation", "data-maxWidth", "width", "data-maxHeight",
-  "data-client", "data-project", "data-category", "data-discipline", "order"
-];
-
-function liveSheet() {
-  const rows = scrollItems.map((item) => HEADERS.map((h) => (h === "order" ? "" : String(item[h] ?? ""))));
-  return {
-    Sheet1: [HEADERS, ...rows],
-    projects: [["project", "description"], ["surf overdose", "Surf Overdose was the first apparel collection…"]]
-  };
-}
+const HEADERS = SHEET_HEADERS;
+const liveSheet = sampleSheet;
 
 let env;
 let sheets;
@@ -128,7 +118,10 @@ describe("publish", () => {
     const preview = await api("POST", "/api/publish", { json: { draftIds: ids, dryRun: true } });
     expect(preview.status).toBe(200);
     expect(preview.data.preview.map((p) => p.id)).toEqual(["scroll-item-51", "scroll-item-52"]);
-    expect(preview.data.preview[0].position).toBe(3); // right after "{ Keep scrolling }"
+    // The first draft opens the site; "{ Keep scrolling }" stays second.
+    expect(preview.data.preview[0]).toMatchObject({ position: 1, opener: true });
+    expect(preview.data.sequence[1]).toBe("scroll-item-2");
+    expect(preview.data.moved.id).toBe("scroll-item-1");
     expect(sheets.calls).toEqual([]);
     expect(deployCalls).toEqual([]);
   });
@@ -192,7 +185,42 @@ describe("publish", () => {
   });
 });
 
+describe("opener", () => {
+  it("refreshes the opener on publish and re-slots the previous one", async () => {
+    const a = await imageDraft("a.png", "Brand New");
+    const b = await imageDraft("b.png", "Brand New");
+    const result = await api("POST", "/api/publish", { json: { draftIds: [a, b], openerDraftId: b } });
+    expect(result.data.published.find((p) => p.opener).id).toBe("scroll-item-52");
+    const order = (id) => {
+      const row = sheets.tabs.Sheet1.find((cells) => cells[0] === id);
+      return row[HEADERS.indexOf("order")];
+    };
+    // Old opener got an explicit later position; new opener took its key.
+    expect(Number(order("scroll-item-1"))).toBeGreaterThan(20);
+    expect(order("scroll-item-52")).toBe("10");
+  });
+
+  it("can keep the current opener", async () => {
+    const a = await imageDraft("a.png", "Brand New");
+    const result = await api("POST", "/api/publish", { json: { draftIds: [a], openerDraftId: null, dryRun: true } });
+    expect(result.data.moved).toBeNull();
+    expect(result.data.sequence.slice(0, 3)).toEqual(["scroll-item-1", "scroll-item-2", "scroll-item-51"]);
+  });
+
+  it("rejects an opener that isn't being published", async () => {
+    const a = await imageDraft("a.png", "Brand New");
+    const result = await api("POST", "/api/publish", { json: { draftIds: [a], openerDraftId: "nope" } });
+    expect(result.status).toBe(400);
+  });
+});
+
 describe("live content", () => {
+  it("edits a live project's description", async () => {
+    const result = await api("PUT", "/api/projects/surf%20overdose", { json: { description: "Rewritten." } });
+    expect(result.data).toEqual({ updated: "surf overdose" });
+    expect(sheets.tabs.projects[1]).toEqual(["surf overdose", "Rewritten."]);
+  });
+
   it("lists live items and flags pieces of the same project that sit together", async () => {
     const content = await api("GET", "/api/content");
     expect(content.data.items).toHaveLength(scrollItems.length);
