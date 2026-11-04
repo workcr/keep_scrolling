@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation, useNavigation } from "react-router-dom";
+import { Outlet, useNavigation } from "react-router-dom";
 import NavBar from "../components/NavBar";
-import SoundToggle from "../components/SoundToggle";
-
-// Pages where hovering a video plays its sound.
-const HOVER_SOUND_PATHS = new Set(["/", "/gallery"]);
 
 export default function MainLayout() {
   const navigation = useNavigation();
-  const location = useLocation();
   const [show, setShow] = useState(false);
   const isLoading = Boolean(navigation.location);
 
@@ -30,7 +25,6 @@ export default function MainLayout() {
         />
       </div>
       <NavBar />
-      {HOVER_SOUND_PATHS.has(location.pathname) ? <SoundToggle /> : null}
       <main>
         {isLoading && "Loading"}
         <Outlet />
