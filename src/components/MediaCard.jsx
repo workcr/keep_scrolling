@@ -393,10 +393,30 @@ export default function MediaCard(item) {
   }, [deferredVideoReady, item.videoActive, mediaType, projectMedia, sendVideoCommand]);
 
   const enableAudio = useCallback(() => {
+    const video = videoRef.current;
+    if (!isVimeoVideo && video) {
+      // Browsers only allow sound after the visitor has clicked, tapped or
+      // typed on the page. Unmuting before that makes Chrome/Safari PAUSE the
+      // video, which looked like hover "freezing" videos right after a reload.
+      // So: before the first interaction, keep playing silently; after it,
+      // unmute; and if a browser still refuses, fall back to muted playback.
+      const activated = navigator.userActivation ? navigator.userActivation.hasBeenActive : true;
+      if (!activated) {
+        void video.play().catch(() => {});
+        return;
+      }
+      video.volume = 1;
+      video.muted = false;
+      void video.play().catch(() => {
+        video.muted = true;
+        void video.play().catch(() => {});
+      });
+      return;
+    }
     sendVideoCommand("setVolume", 1);
     sendVideoCommand("setMuted", false);
     sendVideoCommand("play");
-  }, [sendVideoCommand]);
+  }, [isVimeoVideo, sendVideoCommand]);
 
   const disableAudio = useCallback(() => {
     sendVideoCommand("setVolume", 0);
