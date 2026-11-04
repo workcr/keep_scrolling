@@ -52,7 +52,7 @@ repository into R2, and a chat-style agent. Those are stages 2 and 3.
 
 The home page and the gallery are two views of the same work, so every piece
 goes on both. The only per-item layout setting today is the gallery's
-two-column "wide" pieces (8 of 51). That is a rhythm choice, so the Studio
+two-column "wide" pieces (8 of 49). That is a rhythm choice, so the Studio
 makes it for you: roughly one in five new pieces, preferring landscape
 images and videos. It writes a `layout` value that the gallery already reads, so
 you can still override any piece in the sheet.
@@ -63,7 +63,7 @@ you can still override any piece in the sheet.
 
 The site should feel like an endless body of work, so pieces from the same
 project must not appear together. Today's order was arranged by hand and works:
-in 51 pieces, only one pair from the same project sits side by side. The risk
+in 49 pieces, only one pair from the same project sits side by side. The risk
 is the future. Added at the end of the list, a new 6-piece project would play
 as one block.
 

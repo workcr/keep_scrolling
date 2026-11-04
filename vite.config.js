@@ -65,6 +65,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.js",
+    // The Studio (studio/) has its own test setup: `npm test` inside studio/.
+    exclude: ["**/node_modules/**", "studio/**"],
     css: true
   }
 });
