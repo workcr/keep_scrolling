@@ -4,3 +4,4 @@ dist/
 deploy_bundle/
 .playwright-cli/
 src/assets/*.mp4
+.env.r2.local

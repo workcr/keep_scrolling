@@ -1,10 +1,16 @@
 import localScrollItems from "./data/scroll-items.json";
+import { createAltLookup } from "./altText";
+import { csvToObjects, projectsFromCsv } from "./csv";
+import { titleCase } from "./site";
 
-const DEFAULT_API_BASE = "https://api.sheety.co/55ad31708c31d543a624b88053f567d9/backend/";
 const DEFAULT_ITEMS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/export?format=csv&gid=0";
-const configuredBase = String(import.meta.env.VITE_API_BASE || DEFAULT_API_BASE).trim();
-const API_BASE = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
+// Project descriptions live in the "projects" tab of the same Google Sheet,
+// exported by tab name. (They used to come from Sheety, an account outside
+// the site owner's control, so it is no longer used at all.)
+const DEFAULT_PROJECTS_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/gviz/tq?tqx=out:csv&sheet=projects";
+const PROJECTS_CSV_URL = String(import.meta.env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL).trim();
 const ITEMS_CSV_URL = String(import.meta.env.VITE_ITEMS_CSV_URL || DEFAULT_ITEMS_CSV_URL).trim();
 const REQUEST_TIMEOUT_MS = 8000;
 
@@ -13,6 +19,22 @@ function pick(...values) {
     if (value !== undefined && value !== null && value !== "") return value;
   }
   return undefined;
+}
+
+const localAlt = createAltLookup(localScrollItems || []);
+
+// Many sheet rows still carry "This image needs a description." as alt text.
+// That is worse than nothing for screen readers and image search, so derive a
+// short factual label from the row until a real description is written.
+function describeMedia(alt, { src, mediaType, project, client }) {
+  const text = localAlt(alt, src);
+  if (text) return text;
+  if (!project) return "";
+  const kind = String(mediaType || "").toLowerCase() === "video" ? "Video" : "Image";
+  const byClient = client && String(client).toLowerCase() !== String(project).toLowerCase()
+    ? ` for ${titleCase(client)}`
+    : "";
+  return `${kind} from the ${titleCase(project)} project${byClient}`;
 }
 
 function normalizeItem(item) {
@@ -24,6 +46,7 @@ function normalizeItem(item) {
 
   return {
     ...item,
+    alt: describeMedia(item.alt, { src: item.src, mediaType, project, client }),
     mediaType,
     client,
     project,
@@ -73,63 +96,6 @@ function fallbackProjectsFromItems(items) {
   return Array.from(map.values());
 }
 
-async function fetchJsonWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
-    }
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let value = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (char === "\"") {
-      if (inQuotes && next === "\"") {
-        value += "\"";
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      row.push(value);
-      value = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") i += 1;
-      row.push(value);
-      if (row.some((cell) => cell !== "")) rows.push(row);
-      row = [];
-      value = "";
-      continue;
-    }
-
-    value += char;
-  }
-
-  row.push(value);
-  if (row.some((cell) => cell !== "")) rows.push(row);
-  return rows;
-}
-
 async function fetchTextWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -144,16 +110,29 @@ async function fetchTextWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
-async function fetchSheetItems() {
-  const text = await fetchTextWithTimeout(ITEMS_CSV_URL);
-  const [headers = [], ...rows] = parseCsv(text);
-  return rows
-    .map((row) =>
-      Object.fromEntries(headers.map((header, index) => [String(header || "").trim(), row[index] ?? ""]))
-    )
-    .map(normalizeItem)
-    .sort((a, b) => itemSequence(a) - itemSequence(b));
+// Every route loader needs the same sheet. Without a cache, navigating
+// Home -> Gallery -> Project re-downloaded the whole CSV each time and blocked
+// the navigation on it. Keep one in-flight/settled promise per page session and
+// drop it on failure so the next navigation retries.
+let sheetItemsPromise;
+
+function fetchSheetItems() {
+  if (!sheetItemsPromise) {
+    sheetItemsPromise = fetchTextWithTimeout(ITEMS_CSV_URL)
+      .then((text) =>
+        csvToObjects(text)
+          .map(normalizeItem)
+          .sort((a, b) => itemSequence(a) - itemSequence(b))
+      )
+      .catch((error) => {
+        sheetItemsPromise = undefined;
+        throw error;
+      });
+  }
+  return sheetItemsPromise;
 }
+
+let projectsPromise;
 
 export async function fetchItems() {
   try {
@@ -176,8 +155,13 @@ export async function fetchHomeItems() {
 
 export async function fetchProjects() {
   try {
-    const data = await fetchJsonWithTimeout(`${API_BASE}projects`);
-    return data.projects || [];
+    projectsPromise ||= fetchTextWithTimeout(PROJECTS_CSV_URL)
+      .then(projectsFromCsv)
+      .catch((error) => {
+        projectsPromise = undefined;
+        throw error;
+      });
+    return await projectsPromise;
   } catch (error) {
     console.error("Error fetching projects:", error);
     return fallbackProjectsFromItems(fallbackItems());

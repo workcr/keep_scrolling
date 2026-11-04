@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLoaderData } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
+import Seo from "../components/Seo";
 import scrollItems from "../data/scroll-items.json";
 import { slugifyProjectName } from "../utils";
 
@@ -15,9 +16,11 @@ const DEFAULT_MAX_WIDTH_RATIO = 0.84;
 const DEFAULT_MAX_HEIGHT_RATIO = 0.84;
 const BOTTOM_SAFE_MARGIN_PX = 16;
 const EDGE_PADDING_RATIO = 0.05;
-const PRELOAD_BEHIND_ITEMS = 48;
-const PRELOAD_AHEAD_ITEMS = 8;
-const EAGER_VIDEO_AHEAD_ITEMS = 6;
+const PRELOAD_BEHIND_ITEMS = 8;
+const PRELOAD_AHEAD_ITEMS = 6;
+const VIDEO_PRELOAD_AHEAD_ITEMS = 6;
+const ACTIVE_VIDEO_AHEAD_ITEMS = 1;
+const ACTIVE_VIDEO_BEHIND_ITEMS = 1;
 
 function parseInlineStyle(input) {
   if (!input) return {};
@@ -100,9 +103,12 @@ function projectNameForItem(item) {
 }
 
 export default function Home() {
+  const { items: loadedItems = [] } = useLoaderData();
   const sourceItems = useMemo(
-    () => scrollItems.filter((item) => String(item.class || "").includes("scroll-item")),
-    []
+    () => (loadedItems.length ? loadedItems : scrollItems).filter(
+      (item) => String(item.class || "").includes("scroll-item")
+    ),
+    [loadedItems]
   );
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
@@ -155,28 +161,34 @@ export default function Home() {
       setVisibleCount((prev) => Math.min(MAX_BATCH, prev + BATCH_SIZE));
     };
 
-    const onScroll = () => {
-      targetScrollRef.current = scroller.scrollTop;
-      appendIfNeeded();
-    };
-
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-
+    // The smoothing loop only runs while the eased position is catching up with
+    // the real scroll position. It used to run every frame for as long as the
+    // page was open, burning CPU/battery while the visitor was just watching.
     let rafId = 0;
     const tick = () => {
       const current = currentScrollRef.current;
       const target = targetScrollRef.current;
-      const next = current + (target - current) * SMOOTHING_FACTOR;
+      const settled = Math.abs(target - current) < 0.1;
+      const next = settled ? target : current + (target - current) * SMOOTHING_FACTOR;
       currentScrollRef.current = next;
 
-      if (Math.abs(next - lastPaintedRef.current) >= 0.2) {
-        lastPaintedRef.current = next;
-        setSmoothedScroll(next);
+      if (settled || Math.abs(next - lastPaintedRef.current) >= 0.2) {
+        if (next !== lastPaintedRef.current) {
+          lastPaintedRef.current = next;
+          setSmoothedScroll(next);
+        }
       }
 
-      rafId = requestAnimationFrame(tick);
+      rafId = settled ? 0 : requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+
+    const onScroll = () => {
+      targetScrollRef.current = scroller.scrollTop;
+      appendIfNeeded();
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+
+    scroller.addEventListener("scroll", onScroll, { passive: true });
 
     return () => {
       scroller.removeEventListener("scroll", onScroll);
@@ -190,6 +202,7 @@ export default function Home() {
 
   return (
     <div className="carrousel-container home-scroll-container" ref={scrollerRef}>
+      <Seo path="/" />
       <div className="home-stage">
         <div className="home-scroll-prompt" style={{ opacity: promptOpacity }}>
           <div className="text-3xl flex flex-col gap-6">
@@ -263,8 +276,15 @@ export default function Home() {
               {...item}
               sizes="84vw"
               videoInteraction={mediaType === "video" ? "hover" : undefined}
+              videoActive={
+                mediaType !== "video" ||
+                (index >= currentIndex - ACTIVE_VIDEO_BEHIND_ITEMS &&
+                  index <= currentIndex + ACTIVE_VIDEO_AHEAD_ITEMS)
+              }
+              deferVideo={mediaType === "video" && index > currentIndex + VIDEO_PRELOAD_AHEAD_ITEMS}
+              videoLoadStrategy="manual"
               loading={
-                mediaType === "video" && index <= currentIndex + EAGER_VIDEO_AHEAD_ITEMS
+                mediaType === "video" && index <= currentIndex + VIDEO_PRELOAD_AHEAD_ITEMS
                   ? "eager"
                   : "lazy"
               }

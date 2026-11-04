@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData, useLocation } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
+import Seo from "../components/Seo";
+import { SITE } from "../site";
+import { slugifyProjectName } from "../utils";
 
 const TWO_COLUMN_ITEM_IDS = new Set([
   "scroll-item-6",
@@ -59,14 +62,14 @@ function isTwoColItem(item) {
   return /(2\s*-?\s*col|two\s*-?\s*col)/.test(JSON.stringify(item).toLowerCase());
 }
 
-function toSlug(value) {
-  return String(value || "").trim().replace(/\s+/g, "-");
-}
+// Same slug as the home page and sitemap, so each project has one URL
+// (previously "Surf-Overdose" and "surf-overdose" were both linked).
+const toSlug = slugifyProjectName;
 
-const INITIAL_BATCH = 60;
-const BATCH_SIZE = 24;
-const LOAD_AHEAD_PX = 2600;
-const INITIAL_EAGER_VIDEO_LIMIT = 4;
+const INITIAL_BATCH = 36;
+const BATCH_SIZE = 12;
+const LOAD_AHEAD_PX = 1600;
+const INITIAL_EAGER_VIDEO_LIMIT = 1;
 
 function buildBatch(source, start, count) {
   if (!source.length || count <= 0) return [];
@@ -76,6 +79,60 @@ function buildBatch(source, start, count) {
     batch.push({ ...source[sequenceIndex % source.length], __sequenceIndex: sequenceIndex });
   }
   return batch;
+}
+
+function GalleryItem({ item, twoCol, eagerVideo }) {
+  const linkRef = useRef(null);
+  const mediaType = String(item["data-media-type"] || "").toLowerCase();
+  const isVideo = mediaType === "video";
+  const [videoReady, setVideoReady] = useState(!isVideo || eagerVideo);
+  const slug = toSlug(item.project);
+
+  useEffect(() => {
+    if (!isVideo || eagerVideo) {
+      setVideoReady(true);
+      return undefined;
+    }
+
+    setVideoReady(false);
+    const element = linkRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVideoReady(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setVideoReady(Boolean(entry?.isIntersecting));
+      },
+      { root: null, threshold: 0, rootMargin: "300px" }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [eagerVideo, isVideo, item.src]);
+
+  return (
+    <Link
+      ref={linkRef}
+      to={`/project/${slug}`}
+      className={twoCol ? "gallery-grid-item gallery-grid-item--2col" : "gallery-grid-item"}
+    >
+      <MediaCard
+        {...item}
+        sizes={
+          twoCol
+            ? "(max-width: 480px) 67vw, (max-width: 767px) 50vw, (max-width: 1199px) 40vw, 34vw"
+            : "(max-width: 480px) 33vw, (max-width: 767px) 25vw, (max-width: 1199px) 20vw, 17vw"
+        }
+        // Gallery previews stay silent: no sound on hover.
+        deferVideo={isVideo && !videoReady}
+        videoLoadStrategy="manual"
+        loading={eagerVideo ? "eager" : "lazy"}
+        quality={isVideo ? "auto" : undefined}
+      />
+    </Link>
+  );
 }
 
 export default function GalleryPage() {
@@ -90,6 +147,7 @@ export default function GalleryPage() {
   const hasRestoredRef = useRef(false);
   const scrollKey = `gallery-scroll:${location.pathname}${location.search}`;
   const visibleCountKey = `${scrollKey}:count`;
+  const hasActiveFilters = Object.values(filters).some((selected) => selected.length > 0);
 
   useEffect(() => {
     const onPop = () => setFilters(readSearchFilters());
@@ -140,9 +198,13 @@ export default function GalleryPage() {
       loadCheckRafRef.current = 0;
     }
     const storedCount = Number.parseInt(window.sessionStorage.getItem(visibleCountKey) || "", 10);
-    const count = Number.isFinite(storedCount) ? Math.max(INITIAL_BATCH, Math.min(storedCount, 500)) : INITIAL_BATCH;
+    const count = hasActiveFilters
+      ? filtered.length
+      : Number.isFinite(storedCount)
+        ? Math.max(INITIAL_BATCH, Math.min(storedCount, 500))
+        : INITIAL_BATCH;
     setVisibleItems(buildBatch(filtered, 0, count));
-  }, [filtered, visibleCountKey]);
+  }, [filtered, hasActiveFilters, visibleCountKey]);
 
   useEffect(() => {
     if (!visibleItems.length) return;
@@ -168,16 +230,16 @@ export default function GalleryPage() {
   }, [scrollKey, visibleItems.length]);
 
   const appendBatch = useCallback(() => {
-    if (!filtered.length || isAppendingRef.current) return;
+    if (hasActiveFilters || !filtered.length || isAppendingRef.current) return;
     isAppendingRef.current = true;
     setVisibleItems((prev) => [...prev, ...buildBatch(filtered, prev.length, BATCH_SIZE)]);
     requestAnimationFrame(() => {
       isAppendingRef.current = false;
     });
-  }, [filtered]);
+  }, [filtered, hasActiveFilters]);
 
   const scheduleLoadCheck = useCallback(() => {
-    if (!filtered.length || loadCheckRafRef.current) return;
+    if (hasActiveFilters || !filtered.length || loadCheckRafRef.current) return;
 
     loadCheckRafRef.current = requestAnimationFrame(() => {
       loadCheckRafRef.current = 0;
@@ -187,7 +249,7 @@ export default function GalleryPage() {
 
       if (remaining < LOAD_AHEAD_PX) appendBatch();
     });
-  }, [appendBatch, filtered.length]);
+  }, [appendBatch, filtered.length, hasActiveFilters]);
 
   useEffect(() => {
     scheduleLoadCheck();
@@ -209,7 +271,7 @@ export default function GalleryPage() {
   }, [scheduleLoadCheck]);
 
   useEffect(() => {
-    if (!sentinelRef.current || !filtered.length) return;
+    if (hasActiveFilters || !sentinelRef.current || !filtered.length) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -222,7 +284,7 @@ export default function GalleryPage() {
 
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [filtered.length, scheduleLoadCheck]);
+  }, [filtered.length, hasActiveFilters, scheduleLoadCheck]);
 
   useEffect(() => {
     const grid = gridRef.current;
@@ -291,6 +353,12 @@ export default function GalleryPage() {
 
   return (
     <div style={{ paddingLeft: 16, paddingRight: 16, paddingTop: 0 }}>
+      <Seo
+        title={`Gallery — ${SITE.name}, Creative Director`}
+        description={`Selected branding, campaign, film and design work by Creative Director ${SITE.name}.`}
+        path="/gallery"
+        noindex={hasActiveFilters}
+      />
       {filtered.length === 0 ? (
         <div className="my-4 rounded bg-red-50 p-3 text-sm text-red-700">
           No gallery items available right now. Please try again later.
@@ -306,29 +374,18 @@ export default function GalleryPage() {
           if (mediaType === "video") videoCount += 1;
           const eagerVideo = videoIndex >= 0 && videoIndex < INITIAL_EAGER_VIDEO_LIMIT;
           return (
-            <Link
+            <GalleryItem
               key={key}
-              to={`/project/${slug}`}
-              className={twoCol ? "gallery-grid-item gallery-grid-item--2col" : "gallery-grid-item"}
-            >
-              <MediaCard
-                {...item}
-                sizes={
-                  twoCol
-                    ? "(max-width: 480px) 67vw, (max-width: 767px) 50vw, (max-width: 1199px) 40vw, 34vw"
-                    : "(max-width: 480px) 33vw, (max-width: 767px) 25vw, (max-width: 1199px) 20vw, 17vw"
-                }
-                videoInteraction={mediaType === "video" ? "hover" : undefined}
-                deferVideo={mediaType === "video" && !eagerVideo}
-                videoLoadMargin="900px"
-                loading={eagerVideo ? "eager" : "lazy"}
-                quality={mediaType === "video" ? "auto" : undefined}
-              />
-            </Link>
+              item={item}
+              twoCol={twoCol}
+              eagerVideo={eagerVideo}
+            />
           );
         })}
       </div>
-      {filtered.length ? <div ref={sentinelRef} style={{ height: 1 }} aria-hidden="true" /> : null}
+      {filtered.length && !hasActiveFilters ? (
+        <div ref={sentinelRef} style={{ height: 1 }} aria-hidden="true" />
+      ) : null}
     </div>
   );
 }
