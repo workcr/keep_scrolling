@@ -19,3 +19,10 @@ describe("createAltLookup", () => {
     expect(lookup("This image needs a description.", "assets/other.webp")).toBe("");
   });
 });
+
+describe("createAltLookup extra entries", () => {
+  it("uses alt text keyed by filename for media only in the live sheet", () => {
+    const lookup = createAltLookup([], { "SJC_SURF_OVERDOSE_VHS_V2.mov": "VHS film." });
+    expect(lookup("This video needs a description.", "https://x.r2.dev/SJC_SURF_OVERDOSE_VHS_V2.mov")).toBe("VHS film.");
+  });
+});

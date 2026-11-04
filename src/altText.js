@@ -13,8 +13,10 @@ function fileKey(src) {
   }
 }
 
-export function createAltLookup(localItems = []) {
-  const byFile = new Map();
+// extraByFile: { "file.mp4": "alt text" } for media that is only in the live
+// sheet (e.g. src/data/video-alt-text.json, written from the actual videos).
+export function createAltLookup(localItems = [], extraByFile = {}) {
+  const byFile = new Map(Object.entries(extraByFile).map(([file, alt]) => [fileKey(file), alt]));
   for (const item of localItems) {
     const alt = String(item.alt || "").trim();
     if (alt && !PLACEHOLDER_ALT.test(alt)) byFile.set(fileKey(item.src), alt);

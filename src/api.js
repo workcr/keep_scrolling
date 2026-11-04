@@ -1,4 +1,5 @@
 import localScrollItems from "./data/scroll-items.json";
+import videoAltText from "./data/video-alt-text.json";
 import { createAltLookup } from "./altText";
 import { csvToObjects, projectsFromCsv } from "./csv";
 import { titleCase } from "./site";
@@ -21,7 +22,7 @@ function pick(...values) {
   return undefined;
 }
 
-const localAlt = createAltLookup(localScrollItems || []);
+const localAlt = createAltLookup(localScrollItems || [], videoAltText);
 
 // Many sheet rows still carry "This image needs a description." as alt text.
 // That is worse than nothing for screen readers and image search, so derive a

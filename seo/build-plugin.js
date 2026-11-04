@@ -261,7 +261,7 @@ function buildPages(projects, base) {
             ? { genre: [project.category, project.discipline].filter(Boolean).map(titleCase) }
             : {}),
           ...(images.length ? { image: images } : {}),
-          ...(project.videos.length ? { video: project.videos.map((video) => ({ "@type": "VideoObject", name: titleCase(project.name), contentUrl: video.src, thumbnailUrl: images[0] || `${SITE.url}${SITE.image}`, description })) } : {}),
+          ...(project.videos.length ? { video: project.videos.map((video) => ({ "@type": "VideoObject", name: titleCase(project.name), contentUrl: video.src, thumbnailUrl: images[0] || `${SITE.url}${SITE.image}`, description: video.alt || description })) } : {}),
           isPartOf: { "@id": `${SITE.url}/#website` }
         }
       ],
@@ -419,7 +419,10 @@ export default function seoBuildPlugin() {
       const items = await loadItems(config.root, env.VITE_ITEMS_CSV_URL || DEFAULT_ITEMS_CSV_URL, log);
       const descriptions = await loadProjectDescriptions(env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL, log);
       const localItems = JSON.parse(fs.readFileSync(path.join(config.root, "src/data/scroll-items.json"), "utf8"));
-      const projects = groupProjects(items, descriptions, createAltLookup(localItems));
+      const projects = groupProjects(items, descriptions, createAltLookup(
+          localItems,
+          JSON.parse(fs.readFileSync(path.join(config.root, "src/data/video-alt-text.json"), "utf8"))
+        ));
       const pages = buildPages(projects, base);
       const template = fs.readFileSync(templatePath, "utf8");
 
