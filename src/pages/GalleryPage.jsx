@@ -125,7 +125,7 @@ function GalleryItem({ item, twoCol, eagerVideo }) {
             ? "(max-width: 480px) 67vw, (max-width: 767px) 50vw, (max-width: 1199px) 40vw, 34vw"
             : "(max-width: 480px) 33vw, (max-width: 767px) 25vw, (max-width: 1199px) 20vw, 17vw"
         }
-        videoInteraction={isVideo ? "hover" : undefined}
+        // Gallery previews stay silent: no sound on hover.
         deferVideo={isVideo && !videoReady}
         videoLoadStrategy="manual"
         loading={eagerVideo ? "eager" : "lazy"}
