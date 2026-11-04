@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import seoBuildPlugin from "./seo/build-plugin.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,13 +51,17 @@ function copyLocalAssetsForBuild() {
     name: "copy-local-assets-for-build",
     closeBundle() {
       if (!fs.existsSync(localAssetsDir)) return;
-      fs.cpSync(localAssetsDir, distAssetsDir, { recursive: true });
+      fs.cpSync(localAssetsDir, distAssetsDir, {
+        recursive: true,
+        // Only ship media; keep notes and OS junk off the public server.
+        filter: (source) => !/(\.txt|\.DS_Store)$/i.test(source)
+      });
     }
   };
 }
 
 export default defineConfig({
-  plugins: [react(), serveLocalAssets(), copyLocalAssetsForBuild()],
+  plugins: [react(), serveLocalAssets(), copyLocalAssetsForBuild(), seoBuildPlugin()],
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.js",

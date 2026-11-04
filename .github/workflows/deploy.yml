@@ -37,10 +37,22 @@ jobs:
           rm -rf deploy_bundle
           mkdir -p deploy_bundle
           cp -R dist/. deploy_bundle/
-          cat > deploy_bundle/.htaccess <<'HTACCESS'
+          # public/.htaccess (security + caching headers) is already in dist;
+          # append the routing rules for this environment.
+          cat >> deploy_bundle/.htaccess <<'HTACCESS'
+
+          <IfModule mod_headers.c>
+            Header always set X-Robots-Tag "noindex, nofollow"
+          </IfModule>
+
           RewriteEngine On
           RewriteBase /staging/
           RewriteRule ^index\.html$ - [L]
+          # Prerendered routes: /about -> about.html, /project/x -> project/x.html
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteCond %{REQUEST_FILENAME}.html -f
+          RewriteRule ^(.+)$ $1.html [L]
           RewriteCond %{REQUEST_FILENAME} !-f
           RewriteCond %{REQUEST_FILENAME} !-d
           RewriteRule . /staging/index.html [L]
@@ -85,13 +97,24 @@ jobs:
       - name: Prepare deploy bundle
         run: |
           rm -rf deploy_bundle
-          mkdir -p deploy_bundle/assets
+          mkdir -p deploy_bundle
+          # src/assets is already copied into dist/assets by vite.config.js.
           cp -R dist/. deploy_bundle/
-          cp -R src/assets/. deploy_bundle/assets/
-          cat > deploy_bundle/.htaccess <<'HTACCESS'
+          # public/.htaccess (security + caching headers) is already in dist;
+          # append the routing rules for this environment.
+          cat >> deploy_bundle/.htaccess <<'HTACCESS'
+
           RewriteEngine On
           RewriteBase /
+          # One canonical host: send www.keep-scrolling.com to keep-scrolling.com.
+          RewriteCond %{HTTP_HOST} ^www\.keep-scrolling\.com$ [NC]
+          RewriteRule ^(.*)$ https://keep-scrolling.com/$1 [R=301,L]
           RewriteRule ^index\.html$ - [L]
+          # Prerendered routes: /about -> about.html, /project/x -> project/x.html
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteCond %{REQUEST_FILENAME}.html -f
+          RewriteRule ^(.+)$ $1.html [L]
           RewriteCond %{REQUEST_FILENAME} !-f
           RewriteCond %{REQUEST_FILENAME} !-d
           RewriteRule . /index.html [L]

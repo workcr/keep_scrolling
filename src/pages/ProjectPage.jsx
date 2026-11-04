@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useLoaderData, useLocation } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
+import Seo from "../components/Seo";
+import { projectDescription, projectTitle } from "../site";
+import { slugifyProjectName } from "../utils";
 
 const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
 
@@ -61,8 +64,16 @@ export default function ProjectPage() {
     rail.scrollBy({ left: delta, behavior: "smooth" });
   }
 
+  const firstItem = project.gallery?.[0] || {};
+  const projectName = project.project || firstItem.project || "";
+
   return (
     <div className="pt-16 project">
+      <Seo
+        title={projectTitle(projectName)}
+        description={projectDescription({ ...firstItem, ...project, project: projectName })}
+        path={`/project/${slugifyProjectName(projectName)}`}
+      />
       {isDesktop ? (
         <div className="project-rail-shell">
           <div className="project-rail" ref={railRef}>
@@ -105,7 +116,8 @@ export default function ProjectPage() {
       <div className="px-8 lg:px-4 grid grid-cols-3 lg:grid-cols-2 lg:w-1/2 project-info-block">
         <div>Project info</div>
         <div className="space-y-12 col-span-2 lg:col-span-1">
-          <p>{project.description}</p>
+          {/* pre-line keeps line breaks typed in the sheet (e.g. credit lists). */}
+          <p style={{ whiteSpace: "pre-line" }}>{project.description}</p>
           <div className="space-x-4">
             <button type="button">Link</button>
             <button type="button">Share</button>

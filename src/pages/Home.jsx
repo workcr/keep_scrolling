@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
+import Seo from "../components/Seo";
 import scrollItems from "../data/scroll-items.json";
 import { slugifyProjectName } from "../utils";
 
@@ -160,28 +161,34 @@ export default function Home() {
       setVisibleCount((prev) => Math.min(MAX_BATCH, prev + BATCH_SIZE));
     };
 
-    const onScroll = () => {
-      targetScrollRef.current = scroller.scrollTop;
-      appendIfNeeded();
-    };
-
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-
+    // The smoothing loop only runs while the eased position is catching up with
+    // the real scroll position. It used to run every frame for as long as the
+    // page was open, burning CPU/battery while the visitor was just watching.
     let rafId = 0;
     const tick = () => {
       const current = currentScrollRef.current;
       const target = targetScrollRef.current;
-      const next = current + (target - current) * SMOOTHING_FACTOR;
+      const settled = Math.abs(target - current) < 0.1;
+      const next = settled ? target : current + (target - current) * SMOOTHING_FACTOR;
       currentScrollRef.current = next;
 
-      if (Math.abs(next - lastPaintedRef.current) >= 0.2) {
-        lastPaintedRef.current = next;
-        setSmoothedScroll(next);
+      if (settled || Math.abs(next - lastPaintedRef.current) >= 0.2) {
+        if (next !== lastPaintedRef.current) {
+          lastPaintedRef.current = next;
+          setSmoothedScroll(next);
+        }
       }
 
-      rafId = requestAnimationFrame(tick);
+      rafId = settled ? 0 : requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+
+    const onScroll = () => {
+      targetScrollRef.current = scroller.scrollTop;
+      appendIfNeeded();
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+
+    scroller.addEventListener("scroll", onScroll, { passive: true });
 
     return () => {
       scroller.removeEventListener("scroll", onScroll);
@@ -195,6 +202,7 @@ export default function Home() {
 
   return (
     <div className="carrousel-container home-scroll-container" ref={scrollerRef}>
+      <Seo path="/" />
       <div className="home-stage">
         <div className="home-scroll-prompt" style={{ opacity: promptOpacity }}>
           <div className="text-3xl flex flex-col gap-6">

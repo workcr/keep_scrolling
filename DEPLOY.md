@@ -1,9 +1,10 @@
 # Deploy Checklist
 
-## API environments
-- `/.env.production` controls production backend (`VITE_API_BASE`).
-- `/.env.staging` controls staging backend (`VITE_API_BASE`).
-- Update `/.env.staging` to your staging spreadsheet endpoint before preview deploys.
+## Content source
+- All content comes from one Google Sheet: the media tab (`gid=0`) and a tab
+  named `projects` (columns `project`, `description`).
+- To point a build at a different sheet, set `VITE_ITEMS_CSV_URL` and
+  `VITE_PROJECTS_CSV_URL` in `/.env.production` or `/.env.staging`.
 
 ## Start new work on `codex/*`
 ```bash

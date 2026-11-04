@@ -1,10 +1,21 @@
+import Seo from "../components/Seo";
+import { SITE, emailHref } from "../site";
+
 export default function AboutPage() {
   return (
     <section className="about-page">
+      <Seo
+        title={`About — ${SITE.name}, Creative Director`}
+        description={SITE.description}
+        path="/about"
+      />
       <div className="about-hero">
         <img
           src="/assets/rmnds1_by%20Izique_RedOrange.webp"
-          alt="Portrait with red background"
+          alt="Portrait of Rodrigo Mendes against a red-orange background"
+          width="2048"
+          height="1536"
+          fetchPriority="high"
           className="about-hero-image"
         />
       </div>
@@ -31,13 +42,20 @@ export default function AboutPage() {
           </div>
           <div className="about-label">Let&apos;s talk</div>
           <div className="about-links">
-            <a href="#" className="about-link">
+            <a
+              href="#email"
+              className="about-link"
+              onClick={(event) => {
+                event.preventDefault();
+                window.location.href = emailHref();
+              }}
+            >
               Email
             </a>
-            <a href="#" className="about-link">
+            <a href={SITE.instagram} className="about-link" rel="me">
               Instagram
             </a>
-            <a href="https://www.linkedin.com/in/rodrigo-mendes-4029b821" className="about-link">
+            <a href={SITE.linkedin} className="about-link" rel="me">
               LinkedIn
             </a>
           </div>
