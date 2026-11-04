@@ -3,7 +3,8 @@
 A private editing page for keep-scrolling.com. You drop in images and videos;
 the AI drafts the text; you review and edit; one click publishes to the site.
 
-Status: **draft for approval**. Nothing is built until you approve it.
+Status: **updated with your answers**: free Cloudflare address, new work on
+the home page, Comet/Chrome. Nothing is built until you approve it.
 
 ---
 
@@ -28,10 +29,9 @@ Status: **draft for approval**. Nothing is built until you approve it.
    should be credited? What year?"). Claude then writes the project
    description **in your Surf Overdose style, using only your answers**. It never
    makes up a role, a credit or a result.
-6. **Review and edit** everything as editable cards. You can change any text,
-   reassign a project, and set two options per item:
-   - **Show on home page** (the scrolling intro)
-   - **Wide in gallery** (spans 2 columns)
+6. **Review and edit** everything as editable cards. You can change any text
+   and reassign a project. There are no layout switches: every piece appears on
+   the home page and in the gallery, and the Studio handles placement (section 3).
 7. **Publish.** The Studio writes the rows to your Google Sheet (`Sheet1` and
    `projects`) and redeploys the site so search engines get the update.
    Visitors see it within a minute.
@@ -48,7 +48,44 @@ repository into R2, and a chat-style agent. Those are stages 2 and 3.
 
 ---
 
-## 2. How it fits together
+## 2. Why there are no switches
+
+The home page and the gallery are two views of the same work, so every piece
+goes on both. The only per-item layout setting today is the gallery's
+two-column "wide" pieces (8 of 51). That is a rhythm choice, so the Studio
+makes it for you: roughly one in five new pieces, preferring landscape
+images and videos. It writes a `layout` value that the gallery already reads, so
+you can still override any piece in the sheet.
+
+---
+
+## 3. Sequencing: never one campaign at a time
+
+The site should feel like an endless body of work, so pieces from the same
+project must not appear together. Today's order was arranged by hand and works:
+in 51 pieces, only one pair from the same project sits side by side. The risk
+is the future. Added at the end of the list, a new 6-piece project would play
+as one block.
+
+How the Studio prevents that:
+
+1. **A new `order` column in `Sheet1`.** Existing pieces get numbers that keep
+   today's sequence exactly. The site sorts by this column, so you can still
+   rearrange by editing numbers.
+2. **New pieces are slotted in, not appended.** On Publish, the Studio spreads a
+   project's pieces across the whole sequence, as far apart as possible and
+   never closer than 6 positions to another piece of the same project. The home
+   page and gallery loop, so it also checks across the end-to-start join.
+3. **New work is seen early.** One piece from each new project goes into the
+   first 10 positions, so returning visitors notice it. The rest are spread
+   through the sequence.
+4. **Preview before publishing.** The Studio shows the resulting sequence as a
+   strip of thumbnails and flags any same-project pieces that sit too close,
+   including after hand edits to the sheet.
+
+---
+
+## 4. How it fits together
 
 ```
  You (Chrome on your Mac)
@@ -78,7 +115,7 @@ repository into R2, and a chat-style agent. Those are stages 2 and 3.
 
 ---
 
-## 3. Running costs
+## 5. Running costs
 
 | Service | Cost at your volume |
 |---|---|
@@ -89,7 +126,7 @@ repository into R2, and a chat-style agent. Those are stages 2 and 3.
 
 ---
 
-## 4. One-time setup (your part, about 1 hour total, I'll guide every click)
+## 6. One-time setup (your part, about 1 hour total, I'll guide every click)
 
 1. **Anthropic**: create an account at console.anthropic.com, add billing, set a
    **monthly spend limit of $5**, create an API key named `studio`.
@@ -107,27 +144,28 @@ Each key goes into Cloudflare or GitHub settings. I'll tell you exactly where.
 
 ---
 
-## 5. Rules the Studio enforces
+## 7. Rules the Studio enforces
 
 - **Images:** JPG, PNG, WebP. Large originals are resized to 2560px on the long
   side at quality 85, the same settings that took your images from 467 MB to 33 MB.
 - **Videos:** MP4 (H.264). Over 25 MB shows a warning; over 100 MB is refused,
   with export instructions. Big `.mov` files can't be converted in the browser.
   The one export setting to use will be in the Studio's help panel.
-- **Browser:** Chrome on your Mac. Safari can't produce WebP files in the browser.
+- **Browser:** Comet or Chrome (both are built on Chromium). Safari can't produce
+  WebP files in the browser.
 - **The AI only drafts.** Nothing reaches the live site until you click Publish.
 
 ---
 
-## 6. How I'll build and hand it over
+## 8. How I'll build and hand it over
 
 1. **The Studio server**: upload, R2 storage, drafts, writing to the Sheet, Publish.
    Tested here with a copy of your sheet's structure.
 2. **The Studio page**: drop zone, processing, the card editor.
 3. **The AI step**: prompts tuned on your real content. Your existing alt texts
    and the Surf Overdose description are the style references.
-4. **A small site change**: the site reads the new "show on home" / "wide in
-   gallery" settings from the sheet instead of the hard-coded list it uses today.
+4. **A small site change**: the site sorts by the new `order` column and reads
+   "wide" from the sheet instead of the hard-coded list it uses today.
 5. **Setup with you**: the steps in section 4.
 6. **A test run on staging**: you publish one real project end to end while I
    watch the logs; then we switch it on for the live site.
@@ -137,10 +175,8 @@ been using.
 
 ---
 
-## 7. Decisions needed before I start
+## 9. Decisions (answered)
 
-1. **Studio address:** OK to start on the free `…workers.dev` address and decide
-   on moving your DNS to Cloudflare later?
-2. **Default for new items:** should new uploads appear on the **home page** by
-   default, or only in the gallery and project pages until you tick the box?
-3. **Browser:** do you use Chrome? If not, which browser?
+1. **Studio address:** start on the free `…workers.dev` address; DNS later.
+2. **New uploads:** appear on the home page (and everywhere else) by default.
+3. **Browser:** Comet (Chromium), Chrome as a fallback.
