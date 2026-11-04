@@ -110,10 +110,11 @@ function config(env) {
 }
 
 function sheetsFor(env, deps) {
+  if (deps.sheets) return deps.sheets;
   if (!env.SHEET_ID || !env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     throw new HttpError(503, "The Google Sheet connection isn't set up yet (SHEET_ID / GOOGLE_SERVICE_ACCOUNT_JSON).");
   }
-  return deps.sheets || createSheetsClient({ spreadsheetId: env.SHEET_ID, serviceAccountJson: env.GOOGLE_SERVICE_ACCOUNT_JSON, fetchImpl: deps.fetch });
+  return createSheetsClient({ spreadsheetId: env.SHEET_ID, serviceAccountJson: env.GOOGLE_SERVICE_ACCOUNT_JSON, fetchImpl: deps.fetch });
 }
 
 // ---- drafts ---------------------------------------------------------------
