@@ -451,3 +451,39 @@
     margin-top: 0;
   }
 }
+
+/* "Sound on" button on pages where hovering a video plays its sound. */
+.sound-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  padding: 6px 14px;
+  border: 1px solid #1a1a1a;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1a1a1a;
+  font-size: 14px;
+  line-height: 1.2;
+  cursor: pointer;
+  /* White ring keeps the pill readable over the black wordmark and videos. */
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.sound-toggle:hover,
+.sound-toggle[aria-pressed="true"] {
+  background: #1a1a1a;
+  color: #ffffff;
+}
+
+.sound-toggle:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+/* Hover sound cannot work on touch screens, so don't offer it there. */
+@media (hover: none) {
+  .sound-toggle {
+    display: none;
+  }
+}

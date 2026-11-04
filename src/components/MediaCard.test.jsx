@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MediaCard from "./MediaCard";
+import { setSoundEnabled } from "../soundPreference";
 
 function renderVideo() {
   const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
@@ -17,20 +18,30 @@ function setActivation(hasBeenActive) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  act(() => setSoundEnabled(false));
   delete navigator.userActivation;
 });
 
 describe("MediaCard hover sound", () => {
   it("keeps the video muted and playing before the visitor has interacted", () => {
     setActivation(false);
+    act(() => setSoundEnabled(true));
     const { video, container, play } = renderVideo();
     fireEvent.mouseEnter(container);
     expect(video.muted).toBe(true);
     expect(play).toHaveBeenCalled();
   });
 
-  it("unmutes on hover after the visitor has interacted, and re-mutes on leave", () => {
+  it("stays silent on hover while the Sound button is off", () => {
     setActivation(true);
+    const { video, container } = renderVideo();
+    fireEvent.mouseEnter(container);
+    expect(video.muted).toBe(true);
+  });
+
+  it("unmutes on hover once sound is on, and re-mutes on leave", () => {
+    setActivation(true);
+    act(() => setSoundEnabled(true));
     const { video, container } = renderVideo();
     fireEvent.mouseEnter(container);
     expect(video.muted).toBe(false);
@@ -38,8 +49,19 @@ describe("MediaCard hover sound", () => {
     expect(video.muted).toBe(true);
   });
 
+  it("mutes a playing video when sound is switched off", () => {
+    setActivation(true);
+    act(() => setSoundEnabled(true));
+    const { video, container } = renderVideo();
+    fireEvent.mouseEnter(container);
+    expect(video.muted).toBe(false);
+    act(() => setSoundEnabled(false));
+    expect(video.muted).toBe(true);
+  });
+
   it("falls back to muted playback if the browser refuses sound", async () => {
     setActivation(true);
+    act(() => setSoundEnabled(true));
     const { video, container, play } = renderVideo();
     play.mockImplementationOnce(() => Promise.reject(new DOMException("blocked", "NotAllowedError")));
     await act(async () => {
