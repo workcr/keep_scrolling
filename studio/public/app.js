@@ -451,6 +451,33 @@ function liveThumb(item) {
   return img;
 }
 
+// First frame of a video, loaded only once it scrolls into view.
+const videoObserver =
+  typeof IntersectionObserver === "undefined"
+    ? null
+    : new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const video = entry.target;
+            videoObserver.unobserve(video);
+            video.preload = "metadata";
+            video.src = `${video.dataset.src}#t=0.5`;
+          }
+        },
+        { rootMargin: "300px" }
+      );
+
+function liveVideoThumb(item) {
+  if (String(item["data-media-type"]).toLowerCase() !== "video" || !item.src) return null;
+  const video = el("video", { muted: true, playsinline: true, preload: "none", dataset: { src: absoluteUrl(item.src) } });
+  video.muted = true;
+  video.addEventListener("error", () => video.replaceWith(el("div", { class: "vid" }, "video")), { once: true });
+  if (videoObserver) videoObserver.observe(video);
+  else video.src = video.dataset.src;
+  return video;
+}
+
 function publishBody(dryRun) {
   return {
     draftIds: state.drafts.map((draft) => draft.id),
@@ -566,6 +593,15 @@ function renderLive() {
     ". Change their order numbers in the sheet to spread them out."
   );
 
+  const ignored = $("#ignored");
+  const blank = content.ignoredRows || [];
+  ignored.hidden = blank.length === 0;
+  ignored.replaceChildren(
+    `${blank.length} row${blank.length === 1 ? "" : "s"} in the sheet ${blank.length === 1 ? "has" : "have"} no id, so ${blank.length === 1 ? "it isn't" : "they aren't"} shown or used: row${blank.length === 1 ? "" : "s"} ` +
+      blank.map((r) => r.row + (r.filled.length ? ` (has: ${r.filled.join(", ")})` : "")).join(", ") +
+      ". You can delete them in the sheet."
+  );
+
   $("#live-projects").replaceChildren(
     ...content.projects.map((project) => {
       const area = el("textarea", { rows: 4 }, project.description || "");
@@ -595,7 +631,7 @@ function renderLive() {
       return el(
         "div",
         { class: "item" },
-        liveThumb(item) || el("div", { class: "vid" }, item["data-media-type"] || "media"),
+        liveThumb(item) || liveVideoThumb(item) || el("div", { class: "vid" }, item["data-media-type"] || "media"),
         el(
           "div",
           {},

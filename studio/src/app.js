@@ -229,7 +229,7 @@ async function liveCatalog(env, deps) {
   try {
     const sheets = sheetsFor(env, deps);
     const { itemsTab, projectsTab } = config(env);
-    const [items, projects] = await Promise.all([sheets.readTab(itemsTab), sheets.readTab(projectsTab).catch(() => ({ rows: [] }))]);
+    const [items, projects] = await Promise.all([readItemsTab(sheets, itemsTab), sheets.readTab(projectsTab).catch(() => ({ rows: [] }))]);
     return buildCatalog(items.rows, projects.rows);
   } catch {
     return buildCatalog([], []);
@@ -309,6 +309,20 @@ async function saveProjectDraft(request, env, name) {
 
 // ---- live content ---------------------------------------------------------
 
+// Rows without an id aren't pieces (blank rows, leftovers of a table's
+// formatting). Every route ignores them; Live content reports them so they
+// can be cleaned up in the sheet.
+async function readItemsTab(sheets, itemsTab) {
+  const tab = await sheets.readTab(itemsTab);
+  const rows = [];
+  const ignored = [];
+  for (const row of tab.rows) {
+    if (String(row.id || "").trim()) rows.push(row);
+    else ignored.push({ row: row._row, filled: tab.headers.filter((h) => String(row[h] ?? "").trim()) });
+  }
+  return { ...tab, rows, ignored };
+}
+
 function existingItems(tab) {
   return tab.rows.map((row) => ({
     id: row.id,
@@ -321,12 +335,13 @@ function existingItems(tab) {
 async function readContent(env, deps) {
   const sheets = sheetsFor(env, deps);
   const { itemsTab, projectsTab } = config(env);
-  const [items, projects] = await Promise.all([sheets.readTab(itemsTab), sheets.readTab(projectsTab).catch(() => null)]);
+  const [items, projects] = await Promise.all([readItemsTab(sheets, itemsTab), sheets.readTab(projectsTab).catch(() => null)]);
   return json({
     items: items.rows,
     headers: items.headers,
     missingColumns: missingHeaders(items.headers),
     projects: projects ? projects.rows : [],
+    ignoredRows: items.ignored,
     spacing: spacingWarnings(existingItems(items))
   });
 }
@@ -338,7 +353,7 @@ async function readContent(env, deps) {
 async function fillAlts(env, deps) {
   const sheets = sheetsFor(env, deps);
   const { itemsTab } = config(env);
-  const tab = await sheets.readTab(itemsTab);
+  const tab = await readItemsTab(sheets, itemsTab);
   const column = tab.headers.indexOf("alt");
   if (column === -1) throw new HttpError(409, `${itemsTab} has no "alt" column.`);
   const lookup = createAltLookup(localItems, videoAltText);
@@ -360,7 +375,7 @@ async function editItem(request, env, deps, id) {
   const input = await body(request);
   const sheets = sheetsFor(env, deps);
   const { itemsTab } = config(env);
-  const tab = await sheets.readTab(itemsTab);
+  const tab = await readItemsTab(sheets, itemsTab);
   const row = tab.rows.find((entry) => entry.id === id);
   if (!row) throw new HttpError(404, `No item "${id}" in ${itemsTab}.`);
   const cells = ITEM_TEXT_FIELDS.filter((field) => field in input).map((field) => {
@@ -419,7 +434,7 @@ async function publish(request, env, deps) {
 
   const sheets = sheetsFor(env, deps);
   const { itemsTab, projectsTab } = config(env);
-  const tab = await sheets.readTab(itemsTab);
+  const tab = await readItemsTab(sheets, itemsTab);
   const missing = missingHeaders(tab.headers);
   if (missing.length) {
     throw new HttpError(409, `${itemsTab} is missing column(s): ${missing.join(", ")}. Add them to row 1, then try again.`);
