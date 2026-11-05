@@ -71,8 +71,18 @@ function itemSequence(item) {
   return Number.isFinite(numeric) ? numeric : Number.MAX_SAFE_INTEGER;
 }
 
+// Display order. Rows may carry an `order` number (written by the Studio so
+// new work is slotted between existing pieces); rows without one keep their
+// historical position, id number × 10. With no `order` column at all, this is
+// exactly the old id order. Must match studio/src/lib/sequence.js#sortKey.
+export function sortKey(item) {
+  const order = Number.parseFloat(item.order);
+  if (Number.isFinite(order)) return order;
+  return itemSequence(item) * 10;
+}
+
 function sortItemsBySequence(items) {
-  return [...items].sort((a, b) => itemSequence(a) - itemSequence(b));
+  return [...items].sort((a, b) => sortKey(a) - sortKey(b));
 }
 
 function fallbackItems() {
@@ -123,7 +133,7 @@ function fetchSheetItems() {
       .then((text) =>
         csvToObjects(text)
           .map(normalizeItem)
-          .sort((a, b) => itemSequence(a) - itemSequence(b))
+          .sort((a, b) => sortKey(a) - sortKey(b))
       )
       .catch((error) => {
         sheetItemsPromise = undefined;

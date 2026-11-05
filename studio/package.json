@@ -1,0 +1,21 @@
+{
+  "name": "keep-scrolling-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Private editing Studio for keep-scrolling.com (Cloudflare Worker).",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "db:migrate": "wrangler d1 migrations apply keep-scrolling-studio --remote",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.12",
+    "wrangler": "^4.157.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0"
+  }
+}

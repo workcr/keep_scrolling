@@ -1,0 +1,40 @@
+# The Studio: a Cloudflare Worker in your Cloudflare account.
+# Secrets (never in this file; set in the Cloudflare dashboard or with
+# `wrangler secret put`):
+#   ALLOWED_EMAILS               who may sign in (your email)
+#   GOOGLE_SERVICE_ACCOUNT_JSON  key file of the Google "robot" user the sheet is shared with
+#   GITHUB_TOKEN                 fine-grained token: this repo, "Actions: Read and write"
+#   ANTHROPIC_API_KEY            Claude API key (AI drafts)
+name = "keep-scrolling-studio"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Run the Worker first for every request, so the sign-in check covers the page too.
+run_worker_first = true
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "keep-scrolling-media"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "keep-scrolling-studio"
+# The D1 database created in the Cloudflare dashboard during setup.
+database_id = "418a7d3d-13c1-4733-8d22-02303160feeb"
+migrations_dir = "migrations"
+
+[vars]
+MEDIA_PUBLIC_BASE = "https://pub-fe3a6f50ab3a45e78afe2c4ff20d1737.r2.dev"
+SHEET_ID = "1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E"
+SHEET_ITEMS_TAB = "Sheet1"
+SHEET_PROJECTS_TAB = "projects"
+GITHUB_REPO = "workcr/keep_scrolling"
+GITHUB_WORKFLOW = "deploy.yml"
+GITHUB_DEPLOY_BRANCH = "main"
+# Filled in during setup from Cloudflare Zero Trust -> Access -> Applications.
+ACCESS_TEAM_DOMAIN = ""
+ACCESS_AUD = ""
