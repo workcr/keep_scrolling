@@ -308,3 +308,19 @@ describe("setup status", () => {
     expect((await api("GET", "/api/status")).data).toEqual({ ready: true, missing: [] });
   });
 });
+
+describe("filling missing descriptions", () => {
+  it("writes the prepared alt texts into rows that still have placeholders, and keeps typed text", async () => {
+    const altColumn = HEADERS.indexOf("alt");
+    const row = (id) => sheets.tabs.Sheet1.find((cells) => cells[0] === id);
+    row("scroll-item-10")[altColumn] = "This image needs a description.";
+    row("scroll-item-31")[altColumn] = "This video needs a description.";
+    row("scroll-item-12")[altColumn] = "My own words.";
+    const result = await api("POST", "/api/items/fill-alts");
+    expect(result.status).toBe(200);
+    expect(row("scroll-item-10")[altColumn]).toMatch(/DTMS identity cover/);
+    expect(row("scroll-item-31")[altColumn]).toMatch(/Connecting Changes Everything/);
+    expect(row("scroll-item-12")[altColumn]).toBe("My own words.");
+    expect(result.data.filled).toBeGreaterThanOrEqual(2);
+  });
+});

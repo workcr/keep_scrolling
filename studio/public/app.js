@@ -424,12 +424,31 @@ function renderProjectTexts() {
 
 // ---------------------------------------------------------------- preview & publish
 
+function absoluteUrl(src) {
+  const absolute = /^https?:/i.test(src) ? src : `https://keep-scrolling.com/${String(src).replace(/^\/+/, "")}`;
+  try {
+    return encodeURI(decodeURI(absolute));
+  } catch {
+    return encodeURI(absolute);
+  }
+}
+
+// Smallest listed version first; if a row points at a version that doesn't
+// exist, fall back to the full image, and if that fails too, show a label.
 function liveThumb(item) {
-  const srcset = String(item.srcset || "").split(",")[0]?.trim().split(/\s+/)[0];
-  const src = srcset || (item["data-media-type"] === "image" ? item.src : "");
-  if (!src) return null;
-  const absolute = /^https?:/i.test(src) ? src : `https://keep-scrolling.com/${src.replace(/^\/+/, "")}`;
-  return el("img", { src: encodeURI(decodeURI(absolute)), alt: "", loading: "lazy" });
+  const isImage = ["image", "gif"].includes(String(item["data-media-type"]).toLowerCase());
+  const candidates = [String(item.srcset || "").split(",")[0]?.trim().split(/\s+/)[0], isImage ? item.src : ""]
+    .filter(Boolean)
+    .map(absoluteUrl);
+  if (!candidates.length) return null;
+  let index = 0;
+  const img = el("img", { src: candidates[0], alt: "", loading: "lazy" });
+  img.addEventListener("error", () => {
+    index += 1;
+    if (index < candidates.length) img.src = candidates[index];
+    else img.replaceWith(el("div", { class: "vid" }, item["data-media-type"] || "media"));
+  });
+  return img;
 }
 
 function publishBody(dryRun) {
@@ -606,6 +625,25 @@ function renderLive() {
 }
 
 $("#live-search").addEventListener("input", debounce(renderLive, 200));
+
+$("#fill-alts").addEventListener("click", async () => {
+  const button = $("#fill-alts");
+  if (!confirm("Write the prepared descriptions into every row that still says “needs a description”? Text you typed yourself is kept.")) return;
+  button.disabled = true;
+  try {
+    const result = await api("POST", "/api/items/fill-alts");
+    notify(
+      `Filled ${result.filled} description${result.filled === 1 ? "" : "s"} in the sheet.` +
+        (result.remaining.length ? ` Still missing (write these by hand): ${result.remaining.join(", ")}.` : ""),
+      "ok"
+    );
+    await loadContent();
+  } catch (error) {
+    notify(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
 
 // ---------------------------------------------------------------- start
 
