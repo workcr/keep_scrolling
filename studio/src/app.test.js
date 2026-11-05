@@ -11,8 +11,21 @@ const liveSheet = sampleSheet;
 let env;
 let sheets;
 let deployCalls;
+let aiCalls;
+let aiReply;
+const fakeAi = {
+  beta: {
+    messages: {
+      async create(request) {
+        aiCalls.push(request);
+        return { stop_reason: "end_turn", model: "claude-opus-5-5", content: [{ type: "text", text: JSON.stringify(aiReply) }], usage: {} };
+      }
+    }
+  }
+};
 const deps = () => ({
   sheets,
+  ai: env.NO_AI ? undefined : fakeAi,
   fetch: async (url) => {
     deployCalls.push(String(url));
     return new Response(null, { status: 204 });
@@ -59,6 +72,8 @@ beforeEach(() => {
   };
   sheets = fakeSheets(liveSheet());
   deployCalls = [];
+  aiCalls = [];
+  aiReply = {};
 });
 
 describe("access", () => {
@@ -233,5 +248,50 @@ describe("live content", () => {
     expect(result.data).toEqual({ updated: "scroll-item-7", fields: 1 });
     const row = sheets.tabs.Sheet1.find((cells) => cells[0] === "scroll-item-7");
     expect(row[HEADERS.indexOf("alt")]).toBe("New alt");
+  });
+});
+
+describe("AI drafts", () => {
+  it("fills only empty fields and keeps the suggestion", async () => {
+    const created = await api("POST", "/api/drafts", { json: { kind: "image", fileName: "cap.png", width: 2560, height: 1440 } });
+    const id = created.data.draft.id;
+    for (const slot of ["original", "w320", "w640", "w960", "w1600"]) await upload(id, slot, "image/webp");
+    await api("PATCH", `/api/drafts/${id}`, { json: { client: "my own client" } });
+    aiReply = {
+      project: "surf overdose", project_is_new: false, project_reason: "Same cap.",
+      client: "surf junkie club", category: "Design", discipline: "Fashion Design",
+      alt: "A black cap on a cactus.", confidence: "high"
+    };
+    const result = await api("POST", `/api/drafts/${id}/ai`);
+    expect(result.status).toBe(200);
+    expect(result.data.filled.sort()).toEqual(["alt", "category", "discipline", "project"]);
+    expect(result.data.draft).toMatchObject({ project: "surf overdose", client: "my own client", alt: "A black cap on a cactus." });
+    expect(result.data.draft.ai.project_reason).toBe("Same cap.");
+    // The catalogue from the sheet was included.
+    expect(aiCalls[0].messages[0].content.at(-1).text).toMatch(/surf overdose/);
+  });
+
+  it("explains when AI isn't set up", async () => {
+    env.NO_AI = true;
+    const id = (await api("POST", "/api/drafts", { json: { kind: "image", fileName: "a.png", width: 10, height: 10 } })).data.draft.id;
+    const result = await api("POST", `/api/drafts/${id}/ai`);
+    expect(result.status).toBe(503);
+    expect(result.data.error).toMatch(/ANTHROPIC_API_KEY/);
+  });
+
+  it("writes a project description from your answers and saves it with them", async () => {
+    await imageDraft("a.png", "Brand New");
+    aiReply = { description: "Brand New is a campaign…", missing: ["year"] };
+    const result = await api("POST", "/api/project-drafts/brand%20new/write", {
+      json: { project: "Brand New", answers: { role: "Creative Director", credits: "Designer: X." } }
+    });
+    expect(result.data).toEqual({ project: "Brand New", description: "Brand New is a campaign…", missing: ["year"] });
+    const prompt = aiCalls[0].messages[0].content[0].text;
+    expect(prompt).toMatch(/a\.png alt/); // the draft's alt text
+    expect(prompt).toMatch(/Surf Overdose was the first apparel collection/); // your style example from the sheet
+    const saved = (await api("GET", "/api/project-drafts")).data;
+    expect(saved.projects[0]).toMatchObject({ project: "Brand New", description: "Brand New is a campaign…" });
+    expect(saved.projects[0].answers.role).toBe("Creative Director");
+    expect(saved.questions.map((q) => q.key)).toEqual(["role", "year", "agency", "idea", "result", "credits"]);
   });
 });

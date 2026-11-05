@@ -1,5 +1,6 @@
 import { authenticate } from "./lib/access.js";
 import { handle } from "./app.js";
+import { fakeAi } from "./dev/fakeAi.js";
 import { fakeSheets, sampleSheet } from "./dev/fakeSheets.js";
 
 let devSheets = null;
@@ -16,6 +17,7 @@ export default {
       devSheets ||= fakeSheets(sampleSheet());
       deps.sheets = devSheets;
     }
+    if (env.DEV_FAKE_AI === "true" && isLocal(request)) deps.ai = fakeAi;
     const response = await handle(request, env, deps);
     if (response) return response;
     // Everything that isn't /api/* is the Studio page (studio/public). It holds

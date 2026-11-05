@@ -31,12 +31,16 @@
 
         <ul id="queue" class="queue"></ul>
 
+        <div id="ai-bar" class="ai-bar" hidden>
+          <button type="button" id="ai-all" class="pill">Draft all with AI</button>
+          <span class="muted">Suggests the project, fields and alt text. It only fills empty fields and never publishes anything.</span>
+        </div>
         <div id="drafts-empty" class="empty muted">No drafts yet. Dropped files appear here for review before anything is published.</div>
         <div id="drafts" class="cards"></div>
 
         <section id="project-texts" class="project-texts" hidden>
           <h2>Project descriptions</h2>
-          <p class="muted">Shown on each project page and read by Google and AI tools. Two or three sentences: what it is, your role, what it achieved.</p>
+          <p class="muted">Shown on each project page and read by Google and AI tools. A few short paragraphs, like your Surf Overdose description: what it is and for whom, the idea, how it was made, then credits.</p>
           <div id="project-text-list"></div>
         </section>
 
