@@ -23,8 +23,8 @@ bucket_name = "keep-scrolling-media"
 [[d1_databases]]
 binding = "DB"
 database_name = "keep-scrolling-studio"
-# Filled in during setup, after `wrangler d1 create keep-scrolling-studio`.
-database_id = "00000000-0000-0000-0000-000000000000"
+# The D1 database created in the Cloudflare dashboard during setup.
+database_id = "418a7d3d-13c1-4733-8d22-02303160feeb"
 migrations_dir = "migrations"
 
 [vars]
