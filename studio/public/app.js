@@ -626,6 +626,19 @@ function renderLive() {
 
 $("#live-search").addEventListener("input", debounce(renderLive, 200));
 
+$("#refresh-site").addEventListener("click", async () => {
+  const button = $("#refresh-site");
+  button.disabled = true;
+  try {
+    await api("POST", "/api/deploy");
+    notify("Site refresh started. Search engines see your latest edits in a few minutes (GitHub → Actions shows progress).", "ok");
+  } catch (error) {
+    notify(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
 $("#fill-alts").addEventListener("click", async () => {
   const button = $("#fill-alts");
   if (!confirm("Write the prepared descriptions into every row that still says “needs a description”? Text you typed yourself is kept.")) return;
@@ -634,7 +647,8 @@ $("#fill-alts").addEventListener("click", async () => {
     const result = await api("POST", "/api/items/fill-alts");
     notify(
       `Filled ${result.filled} description${result.filled === 1 ? "" : "s"} in the sheet.` +
-        (result.remaining.length ? ` Still missing (write these by hand): ${result.remaining.join(", ")}.` : ""),
+        (result.remaining.length ? ` Still missing (write these by hand): ${result.remaining.join(", ")}.` : "") +
+        " Click “Refresh site for search engines” when you're done editing.",
       "ok"
     );
     await loadContent();
