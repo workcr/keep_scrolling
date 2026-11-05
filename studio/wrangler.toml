@@ -9,6 +9,9 @@ name = "keep-scrolling-studio"
 main = "src/worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
+# No per-version preview addresses (*-keep-scrolling-studio...): only the one
+# Studio address exists, behind the Access login.
+preview_urls = false
 
 [assets]
 directory = "./public"
@@ -35,6 +38,7 @@ SHEET_PROJECTS_TAB = "projects"
 GITHUB_REPO = "workcr/keep_scrolling"
 GITHUB_WORKFLOW = "deploy.yml"
 GITHUB_DEPLOY_BRANCH = "main"
-# Filled in during setup from Cloudflare Zero Trust -> Access -> Applications.
-ACCESS_TEAM_DOMAIN = ""
-ACCESS_AUD = ""
+# Cloudflare Access (Zero Trust team "rmnds"): the Worker re-checks every
+# login token against these. Not secrets: the AUD tag only identifies the app.
+ACCESS_TEAM_DOMAIN = "https://rmnds.cloudflareaccess.com"
+ACCESS_AUD = "a5548768e65103342b997a5f215044d38aab622da85d32df4f1271f569761ff2"
