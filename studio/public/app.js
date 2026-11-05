@@ -501,7 +501,8 @@ async function loadContent() {
     }
   } catch (error) {
     state.content = null;
-    notify(`Can't read the Google Sheet yet: ${error.message}`, "error");
+    // While setup is incomplete, the checklist banner already explains this.
+    if (!state.setupIncomplete) notify(`Can't read the Google Sheet yet: ${error.message}`, "error");
   }
   refreshDatalists();
   renderProjectTexts();
@@ -613,6 +614,7 @@ $("#live-search").addEventListener("input", debounce(renderLive, 200));
     const me = await api("GET", "/api/me");
     $("#who").textContent = me.email;
     const status = await api("GET", "/api/status");
+    state.setupIncomplete = !status.ready;
     if (!status.ready) {
       notify(
         `Setup isn't finished. Add these in Cloudflare → keep-scrolling-studio → Settings → Variables and Secrets (type: Secret): ` +
