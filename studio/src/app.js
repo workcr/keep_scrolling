@@ -14,6 +14,7 @@
 //   GET    /api/content                    what's live: Sheet1 + projects tab + spacing warnings
 //   PATCH  /api/items/:id                  edit a live item's text in Sheet1
 //   POST   /api/items/fill-alts            write the prepared alt texts into rows that still have placeholders
+//   POST   /api/deploy                     refresh the website's search-engine pages (after live edits)
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
 //   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
 //                                          openerDraftId: piece to open the site with
@@ -531,6 +532,12 @@ export async function handle(request, env, deps = {}) {
     }
     if (parts[0] === "content" && method === "GET") return await readContent(env, deps);
     if (parts[0] === "items" && parts[1] === "fill-alts" && method === "POST") return await fillAlts(env, deps);
+    if (parts[0] === "deploy" && method === "POST") {
+      // Live edits reach visitors at once; this rebuilds the pages search engines read.
+      const deploy = await triggerSiteDeploy(env, deps.fetch);
+      if (!deploy.ok) throw new HttpError(502, `The site refresh didn't start: ${deploy.reason}`);
+      return json({ started: true });
+    }
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);

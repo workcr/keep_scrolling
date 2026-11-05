@@ -324,3 +324,15 @@ describe("filling missing descriptions", () => {
     expect(result.data.filled).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("site refresh", () => {
+  it("starts the website deploy, or explains why it couldn't", async () => {
+    const ok = await api("POST", "/api/deploy");
+    expect(ok.data).toEqual({ started: true });
+    expect(deployCalls).toHaveLength(1);
+    delete env.GITHUB_TOKEN;
+    const failed = await api("POST", "/api/deploy");
+    expect(failed.status).toBe(502);
+    expect(failed.data.error).toMatch(/GITHUB_TOKEN is not set/);
+  });
+});
