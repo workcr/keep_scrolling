@@ -112,7 +112,7 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .spacing { margin-top: 16px; padding: 10px 14px; border-radius: 8px; background: #fff7e6; color: var(--warn); font-size: 13px; }
 .live-projects .project { display: grid; grid-template-columns: 200px 1fr auto; gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .live-items .item { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
-.live-items .item img, .live-items .item .vid { width: 96px; height: 72px; object-fit: cover; border-radius: 4px; background: var(--soft); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
+.live-items .item img, .live-items .item video, .live-items .item .vid { width: 96px; height: 72px; object-fit: cover; border-radius: 4px; background: var(--soft); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
 .live-items .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .live-items .grid .wide { grid-column: 1 / -1; }
 .live-items .id { font-size: 12px; color: var(--muted); }

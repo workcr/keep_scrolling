@@ -336,3 +336,22 @@ describe("site refresh", () => {
     expect(failed.data.error).toMatch(/GITHUB_TOKEN is not set/);
   });
 });
+
+describe("rows without an id", () => {
+  it("are ignored everywhere and reported", async () => {
+    const blankRow = HEADERS.map(() => "");
+    const withOrder = HEADERS.map((h) => (h === "data-media-type" ? "image" : ""));
+    sheets.tabs.Sheet1.push(blankRow, withOrder);
+    const content = await api("GET", "/api/content");
+    expect(content.data.items.every((item) => item.id)).toBe(true);
+    expect(content.data.ignoredRows).toEqual([
+      { row: sheets.tabs.Sheet1.length - 1, filled: [] },
+      { row: sheets.tabs.Sheet1.length, filled: ["data-media-type"] }
+    ]);
+    const filled = await api("POST", "/api/items/fill-alts");
+    expect(filled.data.remaining.every(Boolean)).toBe(true);
+    const id = await imageDraft("a.png", "Brand New");
+    const preview = await api("POST", "/api/publish", { json: { draftIds: [id], dryRun: true } });
+    expect(preview.data.sequence.every(Boolean)).toBe(true);
+  });
+});
