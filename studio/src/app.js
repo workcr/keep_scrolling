@@ -342,7 +342,8 @@ async function readContent(env, deps) {
     missingColumns: missingHeaders(items.headers),
     projects: projects ? projects.rows : [],
     ignoredRows: items.ignored,
-    spacing: spacingWarnings(existingItems(items))
+    // Only pieces really close together (under 3 apart); publishing aims for 6+.
+    spacing: spacingWarnings(existingItems(items), 3)
   });
 }
 
