@@ -1,7 +1,8 @@
 # The Studio: a Cloudflare Worker in your Cloudflare account.
 # Secrets (never in this file; set in the Cloudflare dashboard or with
 # `wrangler secret put`):
-#   ALLOWED_EMAILS               who may sign in (your email)
+#   ALLOWED_EMAILS               optional: more addresses allowed to sign in
+#                                (yours is allowed via ALLOWED_EMAIL_SHA256 below)
 #   GOOGLE_SERVICE_ACCOUNT_JSON  key file of the Google "robot" user the sheet is shared with
 #   GITHUB_TOKEN                 fine-grained token: this repo, "Actions: Read and write"
 #   ANTHROPIC_API_KEY            Claude API key (AI drafts)
@@ -42,3 +43,6 @@ GITHUB_DEPLOY_BRANCH = "main"
 # login token against these. Not secrets: the AUD tag only identifies the app.
 ACCESS_TEAM_DOMAIN = "https://rmnds.cloudflareaccess.com"
 ACCESS_AUD = "a5548768e65103342b997a5f215044d38aab622da85d32df4f1271f569761ff2"
+# Who may sign in, as SHA-256 fingerprints of the email address (lower case).
+# The repository is public, so the address itself isn't written here.
+ALLOWED_EMAIL_SHA256 = "646310a8ebe3c1c53d21a39d19f3f55ca69a44d651ca8f86f330c1834a689046"

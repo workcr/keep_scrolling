@@ -612,6 +612,14 @@ $("#live-search").addEventListener("input", debounce(renderLive, 200));
   try {
     const me = await api("GET", "/api/me");
     $("#who").textContent = me.email;
+    const status = await api("GET", "/api/status");
+    if (!status.ready) {
+      notify(
+        `Setup isn't finished. Add these in Cloudflare → keep-scrolling-studio → Settings → Variables and Secrets (type: Secret): ` +
+          status.missing.map((m) => `${m.secret} (for ${m.needed})`).join("; ") + ".",
+        "error"
+      );
+    }
   } catch (error) {
     notify(error.message, "error");
     return;

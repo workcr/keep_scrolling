@@ -71,6 +71,13 @@ describe("Cloudflare Access check", () => {
     expect((await check(await sign({}))).user).toEqual({ email: "rmnds1@gmail.com" });
   });
 
+  it("accepts the owner by email fingerprint, so the address needn't be in the public repo", async () => {
+    const hashed = { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD, ALLOWED_EMAIL_SHA256: "646310a8ebe3c1c53d21a39d19f3f55ca69a44d651ca8f86f330c1834a689046" };
+    expect((await checkAccess(accessRequest(await sign({})), hashed, fetchKeys)).user).toEqual({ email: "rmnds1@gmail.com" });
+    expect((await checkAccess(accessRequest(await sign({ email: "RMNDS1@gmail.com" })), hashed, fetchKeys)).user).toEqual({ email: "rmnds1@gmail.com" });
+    expect((await checkAccess(accessRequest(await sign({ email: "other@example.com" })), hashed, fetchKeys)).reason).toBe("email-not-allowed");
+  });
+
   it("fails closed when Access is not configured", async () => {
     expect(await authenticate(accessRequest(await sign({})), {}, fetchKeys)).toBeNull();
   });

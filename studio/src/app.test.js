@@ -295,3 +295,16 @@ describe("AI drafts", () => {
     expect(saved.questions.map((q) => q.key)).toEqual(["role", "year", "agency", "idea", "result", "credits"]);
   });
 });
+
+describe("setup status", () => {
+  it("lists missing connections without revealing any value", async () => {
+    delete env.GITHUB_TOKEN;
+    const ready = await api("GET", "/api/status");
+    expect(ready.data).toEqual({
+      ready: false,
+      missing: [{ secret: "GITHUB_TOKEN", needed: "refreshing the site for search engines after Publish" }]
+    });
+    env.GITHUB_TOKEN = "gh";
+    expect((await api("GET", "/api/status")).data).toEqual({ ready: true, missing: [] });
+  });
+});
