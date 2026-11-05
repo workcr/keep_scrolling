@@ -129,3 +129,23 @@ describe("refreshing the opener", () => {
     expect(mixed.sequence[2]).toBe("other-0");
   });
 });
+
+describe("more pieces for an existing project", () => {
+  it("are not pulled to the front next to that project's pieces", () => {
+    const more = [1, 2, 3].map((n) => ({ id: `sjc-${n}`, project: "surf overdose" }));
+    const plan = planSequence(existing, more); // keeps the Surf Overdose opener
+    const sjc = plan.sequence
+      .map((id, index) => ({ id, index }))
+      .filter(({ id }) => id.startsWith("sjc-") || existing.find((e) => e.id === id)?.project === "surf overdose");
+    for (const a of sjc.filter(({ id }) => id.startsWith("sjc-"))) {
+      for (const b of sjc) {
+        if (a.id !== b.id) expect(cyclic(a.index, b.index, plan.sequence.length)).toBeGreaterThanOrEqual(4);
+      }
+    }
+  });
+
+  it("still puts a NEW project's first piece up front", () => {
+    const plan = planSequence(existing, [{ id: "fresh-1", project: "Fresh" }]);
+    expect(plan.sequence.indexOf("fresh-1")).toBe(2);
+  });
+});

@@ -587,10 +587,15 @@ function renderLive() {
   }
   const spacing = $("#spacing");
   spacing.hidden = content.spacing.length === 0;
+  const pairs = content.spacing.length;
   spacing.replaceChildren(
-    `Pieces from the same project sitting close together: `,
-    content.spacing.map((w) => `${w.a} & ${w.b} (${w.project}, ${w.gap} apart)`).join("; "),
-    ". Change their order numbers in the sheet to spread them out."
+    el(
+      "details",
+      {},
+      el("summary", {}, `${pairs} pair${pairs === 1 ? "" : "s"} of pieces from the same project sit within 2 positions of each other. Show`),
+      el("ul", {}, content.spacing.map((w) => el("li", {}, `${w.a} & ${w.b}: ${w.project}, ${w.gap} apart`))),
+      el("p", {}, "To spread them out, change their numbers in the sheet's order column. New work is spaced automatically when you publish.")
+    )
   );
 
   const ignored = $("#ignored");

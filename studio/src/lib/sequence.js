@@ -9,7 +9,8 @@
 //   2. The opener (the first piece, before "{ Keep scrolling }") is refreshed
 //      on every publish: a chosen new piece takes its place, and the previous
 //      opener is re-slotted into the sequence like any other piece.
-//   3. The first new piece of each other new project goes into the first
+//   3. The first piece of each other NEW project (not one already on the
+//      site) goes into the first
 //      FRONT_SLOTS positions after "{ Keep scrolling }", so new work is seen
 //      early.
 //   4. Every new piece is placed as far as possible from other pieces of the
@@ -114,10 +115,15 @@ export function planSequence(existing, incoming, { openerId } = {}) {
   const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
 
   const warnings = [];
+  // Only NEW projects get a piece up front. More pieces for a project that's
+  // already on the site are spread like everything else (otherwise they'd be
+  // pulled next to that project's existing pieces, e.g. the opener).
+  const existingProjects = new Set(list.filter((entry) => !entry.text && entry.project).map((entry) => entry.project));
+
   for (const [project, items] of ordered) {
     items.forEach((item, n) => {
       // The opener already puts this project up front.
-      const isFirst = n === 0 && project !== openerProject;
+      const isFirst = n === 0 && project !== openerProject && !existingProjects.has(project);
       const lastIndex = list.length;
       const from = leading;
       const to = isFirst ? Math.min(leading + FRONT_SLOTS - 1, lastIndex) : lastIndex;
