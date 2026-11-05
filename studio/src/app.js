@@ -5,9 +5,11 @@
 //   POST   /api/drafts                     start a draft for one file -> upload slots
 //   PUT    /api/drafts/:id/files/:slot     stream one file (original, w320.., poster, frame0..5) into R2
 //   PATCH  /api/drafts/:id                 edit text fields
+//   POST   /api/drafts/:id/ai              AI suggestion (project, fields, alt text); fills empty fields only
 //   DELETE /api/drafts/:id                 discard a draft and its files
 //   GET    /api/project-drafts             project descriptions written in the Studio
 //   PUT    /api/project-drafts/:name       save a project description
+//   POST   /api/project-drafts/:name/write AI writes the description from your answers
 //   GET    /api/content                    what's live: Sheet1 + projects tab + spacing warnings
 //   PATCH  /api/items/:id                  edit a live item's text in Sheet1
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
@@ -16,6 +18,7 @@
 //                                          (default: the first draft; null keeps the current opener)
 
 import { authenticate } from "./lib/access.js";
+import { AiError, QUESTIONS, buildCatalog, createClient, draftMedia, writeDescription } from "./lib/ai.js";
 import { triggerSiteDeploy } from "./lib/github.js";
 import { chooseWide, missingHeaders, nextItemNumber, rowValues, toRow } from "./lib/rows.js";
 import { planSequence, spacingWarnings } from "./lib/sequence.js";
@@ -202,7 +205,86 @@ async function listDrafts(env) {
 
 async function listProjectDrafts(env) {
   const { results } = await env.DB.prepare("SELECT * FROM project_drafts ORDER BY project").all();
-  return json({ projects: results.map((row) => ({ ...row, answers: row.answers ? JSON.parse(row.answers) : null })) });
+  return json({
+    projects: results.map((row) => ({ ...row, answers: row.answers ? JSON.parse(row.answers) : null })),
+    questions: QUESTIONS
+  });
+}
+
+// ---- AI ---------------------------------------------------------------------
+
+function aiFor(env, deps) {
+  const client = deps.ai || createClient(env);
+  if (!client) throw new HttpError(503, "AI drafts aren't set up yet (ANTHROPIC_API_KEY).");
+  return client;
+}
+
+async function liveCatalog(env, deps) {
+  try {
+    const sheets = sheetsFor(env, deps);
+    const { itemsTab, projectsTab } = config(env);
+    const [items, projects] = await Promise.all([sheets.readTab(itemsTab), sheets.readTab(projectsTab).catch(() => ({ rows: [] }))]);
+    return buildCatalog(items.rows, projects.rows);
+  } catch {
+    return buildCatalog([], []);
+  }
+}
+
+async function aiDraft(env, deps, id) {
+  const draft = await getDraft(env, id);
+  if (draft.status !== "draft") throw new HttpError(409, "This draft is already published.");
+  const client = aiFor(env, deps);
+  const catalog = await liveCatalog(env, deps);
+  let suggestion;
+  try {
+    ({ suggestion } = await draftMedia(client, draft, catalog));
+  } catch (error) {
+    if (error instanceof AiError) throw new HttpError(502, error.message);
+    throw error;
+  }
+  // Fill only what you haven't typed yourself.
+  const fill = {};
+  for (const field of ["project", "client", "category", "discipline", "alt"]) {
+    const value = String(suggestion[field] || "").trim();
+    if (value && !String(draft[field] || "").trim()) fill[field] = value;
+  }
+  const sets = [...Object.keys(fill).map((field) => `${field} = ?`), "ai = ?", "updated_at = ?"].join(", ");
+  await env.DB.prepare(`UPDATE drafts SET ${sets} WHERE id = ?`)
+    .bind(...Object.values(fill), JSON.stringify(suggestion), nowIso(), id)
+    .run();
+  return json({ draft: await getDraft(env, id), suggestion, filled: Object.keys(fill) });
+}
+
+async function aiWriteDescription(request, env, deps, name) {
+  const input = await body(request);
+  const project = String(input.project || decodeURIComponent(name)).trim();
+  if (!project) throw new HttpError(400, "project is required.");
+  const key = project.toLowerCase();
+  const answers = Object.fromEntries(QUESTIONS.map(({ key: q }) => [q, String(input.answers?.[q] || "").trim()]));
+  const client = aiFor(env, deps);
+
+  const { results } = await env.DB.prepare("SELECT alt FROM drafts WHERE status = 'draft' AND lower(project) = ?").bind(key).all();
+  const catalog = await liveCatalog(env, deps);
+  const live = catalog.projects.find((p) => p.project.toLowerCase() === key);
+  const alts = [...results.map((row) => row.alt).filter(Boolean), ...(live?.alts || [])];
+  // Your own best description is the style reference (Surf Overdose by default).
+  const styleExample = catalog.descriptions.get("surf overdose") || undefined;
+
+  let written;
+  try {
+    written = await writeDescription(client, { project, answers, alts, styleExample });
+  } catch (error) {
+    if (error instanceof AiError) throw new HttpError(502, error.message);
+    throw error;
+  }
+  await env.DB.prepare(
+    `INSERT INTO project_drafts (name, project, description, answers, updated_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(name) DO UPDATE SET project = excluded.project, description = excluded.description,
+       answers = excluded.answers, updated_at = excluded.updated_at`
+  )
+    .bind(key, project, written.description, JSON.stringify(answers), nowIso())
+    .run();
+  return json({ project, description: written.description, missing: written.missing });
 }
 
 async function saveProjectDraft(request, env, name) {
@@ -398,11 +480,13 @@ export async function handle(request, env, deps = {}) {
       if (parts.length === 1 && method === "POST") return await createDraft(request, env);
       if (parts.length === 2 && method === "PATCH") return await editDraft(request, env, parts[1]);
       if (parts.length === 2 && method === "DELETE") return await deleteDraft(env, parts[1]);
+      if (parts.length === 3 && parts[2] === "ai" && method === "POST") return await aiDraft(env, deps, parts[1]);
       if (parts.length === 4 && parts[2] === "files" && method === "PUT") return await uploadFile(request, env, parts[1], parts[3]);
     }
     if (parts[0] === "project-drafts") {
       if (parts.length === 1 && method === "GET") return await listProjectDrafts(env);
       if (parts.length === 2 && method === "PUT") return await saveProjectDraft(request, env, parts[1]);
+      if (parts.length === 3 && parts[2] === "write" && method === "POST") return await aiWriteDescription(request, env, deps, parts[1]);
     }
     if (parts[0] === "content" && method === "GET") return await readContent(env, deps);
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));

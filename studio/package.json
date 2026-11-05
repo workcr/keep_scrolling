@@ -14,5 +14,8 @@
   "devDependencies": {
     "vitest": "^4.1.12",
     "wrangler": "^4.157.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0"
   }
 }

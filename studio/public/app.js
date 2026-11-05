@@ -76,6 +76,8 @@ const state = {
   projectDrafts: [],
   content: null, // { items, projects, spacing, missingColumns } or null if the sheet isn't connected
   opener: null, // draft id chosen to open the site
+  questions: [], // the AI's questions for a project description
+  missing: new Map(), // project key -> facts the AI said would strengthen the description
   previews: new Map() // draft id -> object URL of the local preview
 };
 
@@ -183,9 +185,10 @@ async function processAndUpload(file, row) {
 // ---------------------------------------------------------------- drafts
 
 async function loadDrafts() {
-  const [{ drafts }, { projects }] = await Promise.all([api("GET", "/api/drafts"), api("GET", "/api/project-drafts")]);
+  const [{ drafts }, { projects, questions }] = await Promise.all([api("GET", "/api/drafts"), api("GET", "/api/project-drafts")]);
   state.drafts = drafts;
   state.projectDrafts = projects;
+  state.questions = questions || [];
   if (state.opener && !drafts.some((d) => d.id === state.opener)) state.opener = null;
   if (!state.opener && drafts.length) state.opener = drafts[0].id;
   renderDrafts();
@@ -226,6 +229,7 @@ function renderDrafts() {
   const box = $("#drafts");
   box.replaceChildren();
   $("#drafts-empty").hidden = state.drafts.length > 0;
+  $("#ai-bar").hidden = state.drafts.length === 0;
   $("#publish-bar").hidden = state.drafts.length === 0;
 
   for (const draft of state.drafts) {
@@ -242,6 +246,12 @@ function renderDrafts() {
         el("div", { class: "row2" }, draftField(draft, "client", "Client", { list: "dl-client" }), draftField(draft, "category", "Category", { list: "dl-category" })),
         draftField(draft, "discipline", "Discipline", { list: "dl-discipline" }),
         draftField(draft, "alt", "Description of what it shows (alt text)", { textarea: true }),
+        aiNote(draft),
+        el(
+          "div",
+          { class: "tools" },
+          el("button", { type: "button", class: "pill small", onclick: () => runAi(draft.id) }, draft.ai ? "Ask AI again" : "Draft with AI")
+        ),
         el(
           "div",
           { class: "foot" },
@@ -278,6 +288,49 @@ function renderDrafts() {
   renderProjectTexts();
 }
 
+function aiNote(draft) {
+  if (!draft.ai) return null;
+  const { project, project_is_new: isNew, project_reason: reason, confidence } = draft.ai;
+  return el(
+    "div",
+    { class: `ai-note${confidence === "low" ? " low" : ""}` },
+    `AI: ${isNew ? "new project" : "fits"} “${project}” (${confidence} confidence). ${reason || ""}`
+  );
+}
+
+async function runAi(id, { quiet = false } = {}) {
+  const card = document.querySelector(`[data-draft="${id}"]`);
+  card?.classList.add("busy");
+  try {
+    const { filled } = await api("POST", `/api/drafts/${id}/ai`);
+    if (!quiet) notify(filled.length ? `AI filled: ${filled.join(", ")}. Check it before publishing.` : "AI had nothing to add: all fields were already filled.", "ok");
+  } catch (error) {
+    notify(error.message, "error");
+    throw error;
+  } finally {
+    card?.classList.remove("busy");
+  }
+  await loadDrafts();
+}
+
+$("#ai-all").addEventListener("click", async () => {
+  const button = $("#ai-all");
+  button.disabled = true;
+  let done = 0;
+  try {
+    for (const draft of state.drafts) {
+      button.textContent = `Drafting ${++done} of ${state.drafts.length}…`;
+      await runAi(draft.id, { quiet: true });
+    }
+    notify("AI drafts are in. Check every card before publishing.", "ok");
+  } catch {
+    // runAi already showed the error
+  } finally {
+    button.disabled = false;
+    button.textContent = "Draft all with AI";
+  }
+});
+
 function renderProjectTexts() {
   const names = [...new Map(state.drafts.filter((d) => d.project).map((d) => [lower(d.project), d.project])).entries()];
   $("#project-texts").hidden = names.length === 0;
@@ -288,12 +341,16 @@ function renderProjectTexts() {
     const liveText = liveProjects().find((p) => lower(p.project) === key)?.description;
     const status = el("span", { class: "saved" });
     const area = el("textarea", { rows: 4, placeholder: "What it is, your role, what it achieved." }, draftText ?? liveText ?? "");
+    const answers = {};
+    const answerValues = () => Object.fromEntries(Object.entries(answers).map(([k, input]) => [k, input.value.trim()]));
+    // Description and answers save as you type, so nothing is lost on re-render.
     const save = debounce(async () => {
       try {
-        await api("PUT", `/api/project-drafts/${encodeURIComponent(key)}`, { project: name, description: area.value.trim() });
+        const payload = { project: name, description: area.value.trim(), answers: answerValues() };
+        await api("PUT", `/api/project-drafts/${encodeURIComponent(key)}`, payload);
         const existing = state.projectDrafts.find((p) => p.name === key);
-        if (existing) existing.description = area.value.trim();
-        else state.projectDrafts.push({ name: key, project: name, description: area.value.trim() });
+        if (existing) Object.assign(existing, { description: payload.description, answers: payload.answers });
+        else state.projectDrafts.push({ name: key, ...payload });
         status.textContent = "Saved";
       } catch (error) {
         notify(error.message, "error");
@@ -304,7 +361,64 @@ function renderProjectTexts() {
       save();
     });
     const isNew = !liveProjects().some((p) => lower(p.project) === key);
-    list.append(el("div", { class: "project" }, el("strong", {}, name, isNew ? el("span", { class: "muted" }, " · new project") : ""), area, status));
+    const saved = state.projectDrafts.find((p) => p.name === key)?.answers || {};
+    const questions = el(
+      "div",
+      { class: "questions" },
+      state.questions.map((q) => {
+        const wide = q.key === "idea" || q.key === "result" || q.key === "credits";
+        answers[q.key] = wide ? el("textarea", { rows: 2, placeholder: q.hint }, saved[q.key] || "") : el("input", { type: "text", placeholder: q.hint, value: saved[q.key] || "" });
+        answers[q.key].addEventListener("input", () => {
+          status.textContent = "";
+          save();
+        });
+        return el("label", { class: `field${wide ? " wide" : ""}` }, q.label, answers[q.key]);
+      })
+    );
+    const missingText = (list) => (list?.length ? `It would be stronger with: ${list.join("; ")}.` : "");
+    const missing = el("div", { class: "missing" }, missingText(state.missing.get(key)));
+    const write = el(
+      "button",
+      {
+        type: "button",
+        class: "pill small",
+        onclick: async () => {
+          if (area.value.trim() && !confirm("Replace the current description with a new AI draft?")) return;
+          write.disabled = true;
+          write.textContent = "Writing…";
+          try {
+            const result = await api("POST", `/api/project-drafts/${encodeURIComponent(key)}/write`, {
+              project: name,
+              answers: answerValues()
+            });
+            area.value = result.description;
+            status.textContent = "Saved";
+            state.missing.set(key, result.missing);
+            missing.textContent = missingText(result.missing);
+            await loadDrafts();
+          } catch (error) {
+            notify(error.message, "error");
+          } finally {
+            write.disabled = false;
+            write.textContent = "Write with AI";
+          }
+        }
+      },
+      "Write with AI"
+    );
+    list.append(
+      el(
+        "div",
+        { class: "project" },
+        el("strong", {}, name, isNew ? el("span", { class: "muted" }, " · new project") : ""),
+        el("span", { class: "muted" }, "Answer what you can; the AI uses only these facts and what the pieces show."),
+        questions,
+        el("div", { class: "tools" }, write),
+        missing,
+        area,
+        status
+      )
+    );
   }
 }
 
