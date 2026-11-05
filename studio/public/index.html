@@ -4,9 +4,69 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Studio</title>
+    <title>Studio · keep-scrolling.com</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
   </head>
   <body>
-    <p>Studio: the editing page is being built.</p>
+    <header class="topbar">
+      <div class="brand">Studio <span class="muted">keep-scrolling.com</span></div>
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="new" aria-selected="true">New work</button>
+        <button type="button" role="tab" data-tab="live" aria-selected="false">Live content</button>
+      </nav>
+      <div class="who muted" id="who"></div>
+    </header>
+
+    <div id="notice" class="notice" hidden></div>
+
+    <main>
+      <!-- New work -->
+      <section id="tab-new" class="tab-panel">
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="file-input" multiple accept="image/jpeg,image/png,image/webp,video/mp4" hidden />
+          <strong>Drop images or MP4 videos here</strong>
+          <span class="muted">or click to choose files · JPG, PNG, WebP, MP4 up to 100 MB</span>
+        </label>
+
+        <ul id="queue" class="queue"></ul>
+
+        <div id="drafts-empty" class="empty muted">No drafts yet. Dropped files appear here for review before anything is published.</div>
+        <div id="drafts" class="cards"></div>
+
+        <section id="project-texts" class="project-texts" hidden>
+          <h2>Project descriptions</h2>
+          <p class="muted">Shown on each project page and read by Google and AI tools. Two or three sentences: what it is, your role, what it achieved.</p>
+          <div id="project-text-list"></div>
+        </section>
+
+        <section id="publish-bar" class="publish-bar" hidden>
+          <div class="publish-actions">
+            <label class="check"><input type="checkbox" id="keep-opener" /> Keep the current opening piece</label>
+            <button type="button" id="preview-btn" class="pill">Preview order</button>
+            <button type="button" id="publish-btn" class="pill solid">Publish</button>
+          </div>
+          <div id="preview" class="preview" hidden></div>
+        </section>
+      </section>
+
+      <!-- Live content -->
+      <section id="tab-live" class="tab-panel" hidden>
+        <div class="live-toolbar">
+          <input type="search" id="live-search" placeholder="Search by project, client, id or text" />
+          <span id="live-count" class="muted"></span>
+        </div>
+        <div id="spacing" class="spacing" hidden></div>
+        <h2>Projects</h2>
+        <div id="live-projects" class="live-projects"></div>
+        <h2>Pieces</h2>
+        <div id="live-items" class="live-items"></div>
+      </section>
+    </main>
+
+    <datalist id="dl-project"></datalist>
+    <datalist id="dl-client"></datalist>
+    <datalist id="dl-category"></datalist>
+    <datalist id="dl-discipline"></datalist>
   </body>
 </html>

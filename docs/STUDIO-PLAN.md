@@ -76,9 +76,15 @@ How the Studio prevents that:
    project's pieces across the whole sequence, as far apart as possible and
    never closer than 6 positions to another piece of the same project. The home
    page and gallery loop, so it also checks across the end-to-start join.
-3. **New work is seen early.** One piece from each new project goes into the
-   first 10 positions, so returning visitors notice it. The rest are spread
-   through the sequence.
+3. **New work is seen early.**
+   - **The opener is refreshed on every Publish.** One of the new pieces takes the
+     very first position, before "{ Keep scrolling }" (which stays second), so a
+     returning visitor sees something new immediately. The Studio suggests the
+     first piece of the batch; you can pick another, or keep the current opener.
+     The previous opener isn't removed: it moves into the main sequence under the
+     same spacing rule.
+   - One piece from each other new project goes straight after
+     "{ Keep scrolling }". The rest are spread through the sequence.
 4. **Preview before publishing.** The Studio shows the resulting sequence as a
    strip of thumbnails and flags any same-project pieces that sit too close,
    including after hand edits to the sheet.

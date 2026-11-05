@@ -90,3 +90,42 @@ describe("spacingWarnings", () => {
     expect(close).toContainEqual(["scroll-item-11", "scroll-item-12"]);
   });
 });
+
+describe("refreshing the opener", () => {
+  const incoming = Array.from({ length: 4 }, (_, n) => ({ id: `new-${n}`, project: "Brand New" }));
+  const plan = planSequence(existing, incoming, { openerId: "new-0" });
+
+  it("puts the chosen new piece first, keeps '{ Keep scrolling }' second", () => {
+    expect(plan.sequence.slice(0, 2)).toEqual(["new-0", "scroll-item-2"]);
+  });
+
+  it("re-slots the previous opener instead of dropping it, away from its own project", () => {
+    expect(plan.moved.id).toBe("scroll-item-1");
+    const at = plan.sequence.indexOf("scroll-item-1");
+    expect(at).toBeGreaterThan(1);
+    const sjc = existing.filter((e) => e.project === "surf overdose" && e.id !== "scroll-item-1").map((e) => plan.sequence.indexOf(e.id));
+    for (const other of sjc) expect(cyclic(at, other, plan.sequence.length)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("produces keys the website sorts into exactly this sequence", () => {
+    const merged = [
+      ...existing.map((e) => (e.id === plan.moved.id ? { ...e, order: String(plan.moved.order) } : e)),
+      ...incoming.map((i) => ({ id: i.id, order: String(plan.orders[i.id]) }))
+    ].sort((a, b) => sortKey(a) - sortKey(b));
+    expect(merged.map((i) => i.id)).toEqual(plan.sequence);
+  });
+
+  it("spreads the rest of the opener's project through the sequence", () => {
+    const pos = ["new-0", "new-1", "new-2", "new-3"].map((id) => plan.sequence.indexOf(id));
+    for (let i = 0; i < pos.length; i += 1) {
+      for (let j = i + 1; j < pos.length; j += 1) {
+        expect(cyclic(pos[i], pos[j], plan.sequence.length)).toBeGreaterThanOrEqual(MIN_GAP);
+      }
+    }
+  });
+
+  it("gives other new projects a piece right after '{ Keep scrolling }'", () => {
+    const mixed = planSequence(existing, [...incoming, { id: "other-0", project: "Other" }], { openerId: "new-0" });
+    expect(mixed.sequence[2]).toBe("other-0");
+  });
+});

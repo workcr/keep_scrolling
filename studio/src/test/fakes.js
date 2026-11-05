@@ -33,31 +33,4 @@ export function fakeR2() {
   };
 }
 
-/** An in-memory spreadsheet with named tabs: { Sheet1: [[headers...], [row...]], ... } */
-export function fakeSheets(tabs) {
-  const calls = [];
-  return {
-    tabs,
-    calls,
-    async readTab(name) {
-      if (!tabs[name]) throw new Error(`no tab ${name}`);
-      const [headers = [], ...rows] = tabs[name];
-      return {
-        headers,
-        rows: rows.map((cells, i) => ({ _row: i + 2, ...Object.fromEntries(headers.map((h, c) => [h, cells[c] ?? ""])) }))
-      };
-    },
-    async appendRows(name, rows) {
-      calls.push({ type: "append", name, rows });
-      tabs[name].push(...rows);
-    },
-    async updateCells(name, cells) {
-      calls.push({ type: "update", name, cells });
-      for (const { row, column, value } of cells) {
-        const target = tabs[name][row - 1];
-        while (target.length <= column) target.push("");
-        target[column] = value;
-      }
-    }
-  };
-}
+export { fakeSheets } from "../dev/fakeSheets.js";
