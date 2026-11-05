@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { authenticate, resetAccessKeyCache } from "./access.js";
+import { authenticate, checkAccess, refusalMessage, resetAccessKeyCache } from "./access.js";
 import { triggerSiteDeploy } from "./github.js";
 import { base64urlDecode, signJwt, verifyJwt } from "./jwt.js";
 import { columnLetter, createSheetsClient, resetTokenCache } from "./sheets.js";
@@ -58,6 +58,17 @@ describe("Cloudflare Access check", () => {
     for (const token of attempts) {
       expect(await authenticate(accessRequest(token), env, fetchKeys)).toBeNull();
     }
+  });
+
+  it("explains refusals to a signed-in owner, and nothing to a stranger", async () => {
+    const check = async (token, e = env) => checkAccess(accessRequest(token), e, fetchKeys);
+    expect((await check(null)).reason).toBe("no-login");
+    expect(refusalMessage(await check(null))).toBe("Sign in through Cloudflare Access to use the Studio.");
+    expect(await check(await sign({ aud: ["new-app"] }))).toMatchObject({ reason: "token-rejected", detail: "wrong audience" });
+    expect(refusalMessage(await check(await sign({ aud: ["new-app"] })))).toMatch(/AUD tag/);
+    expect(await check(await sign({ email: "other@example.com" }))).toMatchObject({ reason: "email-not-allowed", detail: "other@example.com" });
+    expect(await check(await sign({}), { ...env, ALLOWED_EMAILS: "" })).toMatchObject({ reason: "not-configured", detail: "ALLOWED_EMAILS secret" });
+    expect((await check(await sign({}))).user).toEqual({ email: "rmnds1@gmail.com" });
   });
 
   it("fails closed when Access is not configured", async () => {
