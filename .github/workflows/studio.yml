@@ -12,13 +12,16 @@ on:
   pull_request:
     paths:
       - "studio/**"
-      - "src/data/scroll-items.json"
+      - "src/data/**"
+      - "src/altText.js"
       - ".github/workflows/studio.yml"
   push:
     branches:
       - main
     paths:
       - "studio/**"
+      - "src/data/**"
+      - "src/altText.js"
       - ".github/workflows/studio.yml"
   workflow_dispatch:
 

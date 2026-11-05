@@ -13,6 +13,7 @@
 //   POST   /api/project-drafts/:name/write AI writes the description from your answers
 //   GET    /api/content                    what's live: Sheet1 + projects tab + spacing warnings
 //   PATCH  /api/items/:id                  edit a live item's text in Sheet1
+//   POST   /api/items/fill-alts            write the prepared alt texts into rows that still have placeholders
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
 //   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
 //                                          openerDraftId: piece to open the site with
@@ -20,6 +21,9 @@
 
 import { checkAccess, refusalMessage } from "./lib/access.js";
 import { AiError, QUESTIONS, buildCatalog, createClient, draftMedia, writeDescription } from "./lib/ai.js";
+import { PLACEHOLDER_ALT, createAltLookup } from "../../src/altText.js";
+import localItems from "../../src/data/scroll-items.json";
+import videoAltText from "../../src/data/video-alt-text.json";
 import { triggerSiteDeploy } from "./lib/github.js";
 import { chooseWide, missingHeaders, nextItemNumber, rowValues, toRow } from "./lib/rows.js";
 import { planSequence, spacingWarnings } from "./lib/sequence.js";
@@ -326,6 +330,31 @@ async function readContent(env, deps) {
   });
 }
 
+// The alt texts written earlier (src/data/scroll-items.json and
+// video-alt-text.json) were only used as a fallback by the website. This
+// writes them into the sheet itself, for every row still showing
+// "This image/video needs a description." Text typed in the sheet is kept.
+async function fillAlts(env, deps) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await sheets.readTab(itemsTab);
+  const column = tab.headers.indexOf("alt");
+  if (column === -1) throw new HttpError(409, `${itemsTab} has no "alt" column.`);
+  const lookup = createAltLookup(localItems, videoAltText);
+  const cells = [];
+  const remaining = [];
+  for (const row of tab.rows) {
+    if (String(row["data-media-type"]).toLowerCase() === "text") continue;
+    const alt = String(row.alt || "").trim();
+    if (alt && !PLACEHOLDER_ALT.test(alt)) continue;
+    const text = lookup(alt, row.src);
+    if (text) cells.push({ row: row._row, column, value: text });
+    else remaining.push(row.id);
+  }
+  await sheets.updateCells(itemsTab, cells);
+  return json({ filled: cells.length, remaining });
+}
+
 async function editItem(request, env, deps, id) {
   const input = await body(request);
   const sheets = sheetsFor(env, deps);
@@ -501,6 +530,7 @@ export async function handle(request, env, deps = {}) {
       if (parts.length === 3 && parts[2] === "write" && method === "POST") return await aiWriteDescription(request, env, deps, parts[1]);
     }
     if (parts[0] === "content" && method === "GET") return await readContent(env, deps);
+    if (parts[0] === "items" && parts[1] === "fill-alts" && method === "POST") return await fillAlts(env, deps);
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);
