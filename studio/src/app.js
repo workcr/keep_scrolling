@@ -1,6 +1,7 @@
 // Studio API. Every route requires the signed-in owner (Cloudflare Access).
 //
 //   GET    /api/me                         who is signed in
+//   GET    /api/status                     which connections are set up (yes/no only)
 //   GET    /api/drafts                     drafts not yet published
 //   POST   /api/drafts                     start a draft for one file -> upload slots
 //   PUT    /api/drafts/:id/files/:slot     stream one file (original, w320.., poster, frame0..5) into R2
@@ -462,6 +463,15 @@ async function editProjectDescription(request, env, deps, name) {
   return json({ updated: project });
 }
 
+// Which connections are configured. Only yes/no: never a value.
+function setupStatus(env, deps) {
+  const missing = [];
+  if (!deps.sheets && !(env.SHEET_ID && env.GOOGLE_SERVICE_ACCOUNT_JSON)) missing.push({ secret: "GOOGLE_SERVICE_ACCOUNT_JSON", needed: "reading and publishing to the Google Sheet" });
+  if (!deps.ai && !env.ANTHROPIC_API_KEY) missing.push({ secret: "ANTHROPIC_API_KEY", needed: "AI drafts" });
+  if (!env.GITHUB_TOKEN) missing.push({ secret: "GITHUB_TOKEN", needed: "refreshing the site for search engines after Publish" });
+  return { ready: missing.length === 0, missing };
+}
+
 // ---- router ---------------------------------------------------------------
 
 export async function handle(request, env, deps = {}) {
@@ -476,6 +486,7 @@ export async function handle(request, env, deps = {}) {
   const method = request.method;
   try {
     if (parts[0] === "me" && method === "GET") return json(user);
+    if (parts[0] === "status" && method === "GET") return json(setupStatus(env, deps));
     if (parts[0] === "drafts") {
       if (parts.length === 1 && method === "GET") return await listDrafts(env);
       if (parts.length === 1 && method === "POST") return await createDraft(request, env);

@@ -47,12 +47,18 @@ export async function checkAccess(request, env, fetchImpl = fetch) {
 
   const teamDomain = String(env.ACCESS_TEAM_DOMAIN || "").replace(/\/$/, "");
   const audience = env.ACCESS_AUD;
-  const allowed = String(env.ALLOWED_EMAILS || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
+  const list = (value) =>
+    String(value || "")
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+  // Who may sign in: plain addresses (ALLOWED_EMAILS, a secret) and/or SHA-256
+  // fingerprints of addresses (ALLOWED_EMAIL_SHA256, safe to keep in the public
+  // repository because a fingerprint can't be turned back into the address).
+  const allowed = list(env.ALLOWED_EMAILS);
+  const allowedHashes = list(env.ALLOWED_EMAIL_SHA256);
   if (!teamDomain || !audience) return { user: null, reason: "not-configured", detail: "ACCESS_TEAM_DOMAIN / ACCESS_AUD" };
-  if (!allowed.length) return { user: null, reason: "not-configured", detail: "ALLOWED_EMAILS secret" };
+  if (!allowed.length && !allowedHashes.length) return { user: null, reason: "not-configured", detail: "ALLOWED_EMAILS secret" };
 
   let claims;
   try {
@@ -61,8 +67,14 @@ export async function checkAccess(request, env, fetchImpl = fetch) {
     return { user: null, reason: "token-rejected", detail: String(error.message || error) };
   }
   const email = String(claims.email || "").toLowerCase();
-  if (!allowed.includes(email)) return { user: null, reason: "email-not-allowed", detail: email || "(no email in login)" };
+  const permitted = email && (allowed.includes(email) || allowedHashes.includes(await sha256Hex(email)));
+  if (!permitted) return { user: null, reason: "email-not-allowed", detail: email || "(no email in login)" };
   return { user: { email } };
+}
+
+export async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /** Plain-language explanation of a refusal, for the owner. */
