@@ -17,7 +17,7 @@
 //                                          openerDraftId: piece to open the site with
 //                                          (default: the first draft; null keeps the current opener)
 
-import { authenticate } from "./lib/access.js";
+import { checkAccess, refusalMessage } from "./lib/access.js";
 import { AiError, QUESTIONS, buildCatalog, createClient, draftMedia, writeDescription } from "./lib/ai.js";
 import { triggerSiteDeploy } from "./lib/github.js";
 import { chooseWide, missingHeaders, nextItemNumber, rowValues, toRow } from "./lib/rows.js";
@@ -468,8 +468,9 @@ export async function handle(request, env, deps = {}) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return null; // static UI
 
-  const user = await authenticate(request, env, deps.fetch);
-  if (!user) return json({ error: "Sign in through Cloudflare Access." }, 401);
+  const access = await checkAccess(request, env, deps.fetch);
+  const user = access.user;
+  if (!user) return json({ error: refusalMessage(access), reason: access.reason }, 401);
 
   const parts = url.pathname.split("/").filter(Boolean).slice(1); // drop "api"
   const method = request.method;
