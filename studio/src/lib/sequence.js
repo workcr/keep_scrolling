@@ -150,16 +150,31 @@ export function planSequence(existing, incoming, { openerId } = {}) {
     }
   }
 
-  // Give new pieces keys between their neighbours; existing keys never change.
+  const orders = assignKeys(list);
+
+  let moved = null;
+  if (previousOpener) {
+    moved = { id: previousOpener.id, order: orders[previousOpener.id] };
+    delete orders[previousOpener.id];
+  }
+  if (opener) orders[opener.id] = list[0].key;
+
+  return { orders, moved, sequence: list.map((entry) => entry.id), warnings };
+}
+
+// Give every entry without a key (key === null) a key between its
+// neighbours; entries that have a key keep it. Returns { id: key } for the
+// entries that got one.
+function assignKeys(list) {
   const orders = {};
   let i = 0;
   while (i < list.length) {
-    if (!list[i].isNew) {
+    if (list[i].key !== null) {
       i += 1;
       continue;
     }
     let j = i;
-    while (j < list.length && list[j].isNew) j += 1;
+    while (j < list.length && list[j].key === null) j += 1;
     const before = i > 0 ? list[i - 1].key : null;
     const after = j < list.length ? list[j].key : null;
     const count = j - i;
@@ -172,15 +187,62 @@ export function planSequence(existing, incoming, { openerId } = {}) {
     }
     i = j;
   }
+  return orders;
+}
 
-  let moved = null;
-  if (previousOpener) {
-    moved = { id: previousOpener.id, order: orders[previousOpener.id] };
-    delete orders[previousOpener.id];
+/**
+ * "Re-space": move only the pieces that sit too close to another piece of the
+ * same project (closer than `threshold` positions, around the loop) to the
+ * spot furthest from that project's other pieces. Everything else keeps its
+ * place; the opening (up to and including "{ Keep scrolling }") never moves.
+ * @returns {{ moves: Array<{id, project, from, to, order}>, sequence: string[], remaining: number }}
+ *   from/to are 1-based positions in the whole sequence.
+ */
+export function planRespace(existing, { threshold = 3 } = {}) {
+  const list = [...existing]
+    .sort((a, b) => sortKey(a) - sortKey(b))
+    .map((item) => ({ id: item.id, project: projectKey(item.project), key: sortKey(item), text: isText(item) }));
+  const before = new Map(list.map((entry, index) => [entry.id, index + 1]));
+  const firstText = list.findIndex((entry) => entry.text);
+  const leading = firstText !== -1 && firstText < FRONT_SLOTS ? firstText + 1 : 0;
+
+  // Distances count pieces only (not text cards), like spacingWarnings().
+  const closePair = (skip) => {
+    const pieces = list.map((entry, index) => ({ entry, index })).filter(({ entry }) => !entry.text);
+    for (let i = 0; i < pieces.length; i += 1) {
+      for (let j = i + 1; j < pieces.length; j += 1) {
+        const a = pieces[i];
+        const b = pieces[j];
+        if (!a.entry.project || a.entry.project !== b.entry.project) continue;
+        if (cyclicDistance(i, j, pieces.length) >= threshold) continue;
+        // Move the later piece, unless it's part of the fixed opening.
+        if (b.index >= leading && !skip.has(b.entry.id)) return b.index;
+        if (a.index >= leading && !skip.has(a.entry.id)) return a.index;
+      }
+    }
+    return -1;
+  };
+
+  const tried = new Set();
+  for (let guard = 0; guard < list.length * 2; guard += 1) {
+    const index = closePair(tried);
+    if (index === -1) break;
+    const [entry] = list.splice(index, 1);
+    const { index: target } = chooseIndex(list, entry.project, leading, list.length, Math.round((leading + list.length) / 2));
+    list.splice(target, 0, { ...entry, key: null, moved: true });
+    tried.add(entry.id); // each piece moves at most once
   }
-  if (opener) orders[opener.id] = list[0].key;
 
-  return { orders, moved, sequence: list.map((entry) => entry.id), warnings };
+  const orders = assignKeys(list);
+  const moves = list
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.moved)
+    .map(({ entry, index }) => ({ id: entry.id, project: entry.project, from: before.get(entry.id), to: index + 1, order: orders[entry.id] }));
+  const remaining = spacingWarnings(
+    list.map((entry) => ({ id: entry.id, project: entry.project, mediaType: entry.text ? "text" : "", order: entry.key })),
+    threshold
+  ).length;
+  return { moves, sequence: list.map((entry) => entry.id), remaining };
 }
 
 /** Check an existing sequence (e.g. after hand edits) for pieces that are too close. */

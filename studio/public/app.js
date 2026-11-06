@@ -579,6 +579,31 @@ function liveSaveButton(onSave) {
   return el("div", {}, button, el("div", {}, status));
 }
 
+async function runRespace(event) {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const plan = await api("POST", "/api/respace", { dryRun: true });
+    if (!plan.moves.length) {
+      notify("Nothing to move: no pieces sit too close to their project.", "ok");
+      return;
+    }
+    const list = plan.moves.map((m) => `• ${m.id} (${m.project}): position ${m.from} → ${m.to}`).join("\n");
+    if (!confirm(`Re-space will move ${plan.moves.length} piece${plan.moves.length === 1 ? "" : "s"}:\n\n${list}\n\nNothing else changes. Continue?`)) return;
+    const result = await api("POST", "/api/respace", {});
+    notify(
+      `Moved ${result.moves.length} piece${result.moves.length === 1 ? "" : "s"}. Visitors see the new order now.` +
+        (result.deploy?.ok ? " Search engines follow in a few minutes." : ` The search-engine refresh didn't start: ${result.deploy?.reason}`),
+      result.deploy?.ok ? "ok" : ""
+    );
+    await loadContent();
+  } catch (error) {
+    notify(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderLive() {
   const content = state.content;
   if (!content) {
@@ -594,8 +619,9 @@ function renderLive() {
       {},
       el("summary", {}, `${pairs} pair${pairs === 1 ? "" : "s"} of pieces from the same project sit within 2 positions of each other. Show`),
       el("ul", {}, content.spacing.map((w) => el("li", {}, `${w.a} & ${w.b}: ${w.project}, ${w.gap} apart`))),
-      el("p", {}, "To spread them out, change their numbers in the sheet's order column. New work is spaced automatically when you publish.")
-    )
+      el("p", {}, "Re-space moves only pieces that sit too close (you see the full list before anything changes) to the spot furthest from the rest of their project. Everything else, the opening piece and “{ Keep scrolling }” stay put. New work is spaced automatically when you publish.")
+    ),
+    el("button", { type: "button", class: "pill small", onclick: runRespace }, "Re-space")
   );
 
   const ignored = $("#ignored");
