@@ -95,6 +95,22 @@ export function createSheetsClient({ spreadsheetId, serviceAccountJson, fetchImp
           }))
         })
       });
+    },
+
+    /** Delete whole rows (1-based sheet row numbers). Bottom-up, so numbers stay valid. */
+    async deleteRows(sheetName, rows) {
+      if (!rows.length) return null;
+      const meta = await call(`?fields=sheets.properties(sheetId,title)`);
+      const sheet = (meta.sheets || []).find((entry) => entry.properties.title === sheetName);
+      if (!sheet) throw new Error(`No tab named "${sheetName}".`);
+      const requests = [...new Set(rows)]
+        .sort((a, b) => b - a)
+        .map((row) => ({
+          deleteDimension: {
+            range: { sheetId: sheet.properties.sheetId, dimension: "ROWS", startIndex: row - 1, endIndex: row }
+          }
+        }));
+      return call(`:batchUpdate`, { method: "POST", body: JSON.stringify({ requests }) });
     }
   };
 }

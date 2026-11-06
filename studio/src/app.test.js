@@ -383,3 +383,26 @@ describe("re-space", () => {
     expect((await api("GET", "/api/content")).data.spacing).toEqual([]);
   });
 });
+
+describe("deleting", () => {
+  it("deletes a piece's row, but never a text card", async () => {
+    const count = sheets.tabs.Sheet1.length;
+    expect((await api("DELETE", "/api/items/scroll-item-31")).data).toEqual({ deleted: "scroll-item-31" });
+    expect(sheets.tabs.Sheet1).toHaveLength(count - 1);
+    expect(sheets.tabs.Sheet1.some((cells) => cells[0] === "scroll-item-31")).toBe(false);
+    expect((await api("DELETE", "/api/items/scroll-item-2")).status).toBe(409);
+    expect((await api("DELETE", "/api/items/nope")).status).toBe(404);
+  });
+
+  it("refuses to delete a project that pieces still use, and deletes an empty one", async () => {
+    sheets.tabs.projects.push(["at&t jason preston", "Duplicate project."]);
+    const used = await api("DELETE", "/api/projects/surf%20overdose");
+    expect(used.status).toBe(409);
+    expect(used.data.error).toMatch(/still used by scroll-item-1/);
+    await api("PUT", "/api/project-drafts/at%26t%20jason%20preston", { json: { project: "at&t jason preston", description: "x" } });
+    const done = await api("DELETE", "/api/projects/at%26t%20jason%20preston");
+    expect(done.data).toEqual({ deleted: "at&t jason preston", rows: 1 });
+    expect(sheets.tabs.projects.some((cells) => cells[0] === "at&t jason preston")).toBe(false);
+    expect((await api("GET", "/api/project-drafts")).data.projects).toEqual([]);
+  });
+});
