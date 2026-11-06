@@ -17,6 +17,8 @@
 //   POST   /api/deploy                     refresh the website's search-engine pages (after live edits)
 //   POST   /api/respace                    { dryRun } move only pieces that sit too close to their project
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
+//   DELETE /api/items/:id                  remove a piece's row from Sheet1 (its files stay in R2)
+//   DELETE /api/projects/:name             remove a project's row from the projects tab (refused while pieces use it)
 //   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
 //                                          openerDraftId: piece to open the site with
 //                                          (default: the first draft; null keeps the current opener)
@@ -394,6 +396,34 @@ async function respace(request, env, deps) {
   return json({ dryRun: false, ...plan, deploy });
 }
 
+async function deleteItem(env, deps, id) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const row = tab.rows.find((entry) => entry.id === id);
+  if (!row) throw new HttpError(404, `No piece "${id}" in ${itemsTab}.`);
+  if (String(row["data-media-type"]).toLowerCase() === "text") throw new HttpError(409, "Text cards like “{ Keep scrolling }” can't be deleted here.");
+  await sheets.deleteRows(itemsTab, [row._row]);
+  return json({ deleted: id });
+}
+
+async function deleteProject(env, deps, name) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab, projectsTab } = config(env);
+  const key = name.trim().toLowerCase();
+  const items = await readItemsTab(sheets, itemsTab);
+  const using = items.rows.filter((row) => String(row["data-project"] || "").trim().toLowerCase() === key).map((row) => row.id);
+  if (using.length) {
+    throw new HttpError(409, `“${name}” is still used by ${using.join(", ")}. Move or delete those pieces first.`);
+  }
+  const projects = await sheets.readTab(projectsTab);
+  const rows = projects.rows.filter((row) => String(row.project || "").trim().toLowerCase() === key).map((row) => row._row);
+  await sheets.deleteRows(projectsTab, rows);
+  // Forget the Studio's own saved description too, so it can't come back on a later Publish.
+  await env.DB.prepare("DELETE FROM project_drafts WHERE name = ?").bind(key).run();
+  return json({ deleted: name, rows: rows.length });
+}
+
 async function editItem(request, env, deps, id) {
   const input = await body(request);
   const sheets = sheetsFor(env, deps);
@@ -577,6 +607,8 @@ export async function handle(request, env, deps = {}) {
       if (!deploy.ok) throw new HttpError(502, `The site refresh didn't start: ${deploy.reason}`);
       return json({ started: true });
     }
+    if (parts[0] === "items" && parts.length === 2 && method === "DELETE") return await deleteItem(env, deps, decodeURIComponent(parts[1]));
+    if (parts[0] === "projects" && parts.length === 2 && method === "DELETE") return await deleteProject(env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);

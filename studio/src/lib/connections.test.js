@@ -137,6 +137,31 @@ describe("Google Sheets client", () => {
     expect(batch.data[0].range).toBe("'projects'!B4");
   });
 
+  it("deletes rows bottom-up in the right tab", async () => {
+    resetTokenCache();
+    const pair = await crypto.subtle.generateKey(RS256, true, ["sign", "verify"]);
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(String.fromCharCode(...pkcs8))}\n-----END PRIVATE KEY-----\n`;
+    const account = JSON.stringify({ client_email: "studio@p.iam.gserviceaccount.com", private_key: pem });
+    const calls = [];
+    const fakeFetch = async (url, init = {}) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes("oauth2")) return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+      if (String(url).includes("?fields=")) {
+        return new Response(JSON.stringify({ sheets: [{ properties: { sheetId: 0, title: "Sheet1" } }, { properties: { sheetId: 77, title: "projects" } }] }));
+      }
+      return new Response("{}");
+    };
+    const sheets = createSheetsClient({ spreadsheetId: "SHEET", serviceAccountJson: account, fetchImpl: fakeFetch });
+    await sheets.deleteRows("projects", [3, 9]);
+    const batch = calls.find((c) => c.url.endsWith("/SHEET:batchUpdate"));
+    expect(JSON.parse(batch.init.body).requests).toEqual([
+      { deleteDimension: { range: { sheetId: 77, dimension: "ROWS", startIndex: 8, endIndex: 9 } } },
+      { deleteDimension: { range: { sheetId: 77, dimension: "ROWS", startIndex: 2, endIndex: 3 } } }
+    ]);
+    await expect(sheets.deleteRows("Nope", [2])).rejects.toThrow(/No tab named/);
+  });
+
   it("names columns like the spreadsheet does", () => {
     expect([0, 25, 26, 27, 51].map(columnLetter)).toEqual(["A", "Z", "AA", "AB", "AZ"]);
   });

@@ -604,6 +604,17 @@ async function runRespace(event) {
   }
 }
 
+async function deleteLive(kind, name, what) {
+  if (!confirm(`Delete ${what}? This removes its row from the sheet. (Google Sheets keeps a version history if you need it back.)`)) return;
+  try {
+    await api("DELETE", `/api/${kind}/${encodeURIComponent(name)}`);
+    notify(`Deleted ${name}. Visitors see the change now; click “Refresh site for search engines” when you're done editing.`, "ok");
+    await loadContent();
+  } catch (error) {
+    notify(error.message, "error");
+  }
+}
+
 function renderLive() {
   const content = state.content;
   if (!content) {
@@ -641,10 +652,15 @@ function renderLive() {
         { class: "project" },
         el("strong", {}, project.project),
         area,
-        liveSaveButton(async () => {
-          await api("PUT", `/api/projects/${encodeURIComponent(project.project)}`, { project: project.project, description: area.value.trim() });
-          project.description = area.value.trim();
-        })
+        el(
+          "div",
+          {},
+          liveSaveButton(async () => {
+            await api("PUT", `/api/projects/${encodeURIComponent(project.project)}`, { project: project.project, description: area.value.trim() });
+            project.description = area.value.trim();
+          }),
+          el("button", { type: "button", class: "link", onclick: () => deleteLive("projects", project.project, `the project “${project.project}” and its description`) }, "Delete")
+        )
       );
     })
   );
@@ -685,7 +701,8 @@ function renderLive() {
           if (!Object.keys(changes).length) return;
           await api("PATCH", `/api/items/${encodeURIComponent(item.id)}`, changes);
           Object.assign(item, changes);
-        })
+        }),
+        el("button", { type: "button", class: "link", onclick: () => deleteLive("items", item.id, `${item.id} from the site (its file stays in storage)`) }, "Delete")
       );
     })
   );
