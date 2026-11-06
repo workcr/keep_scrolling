@@ -15,6 +15,7 @@
 //   PATCH  /api/items/:id                  edit a live item's text in Sheet1
 //   POST   /api/items/fill-alts            write the prepared alt texts into rows that still have placeholders
 //   POST   /api/deploy                     refresh the website's search-engine pages (after live edits)
+//   POST   /api/respace                    { dryRun } move only pieces that sit too close to their project
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
 //   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
 //                                          openerDraftId: piece to open the site with
@@ -27,7 +28,7 @@ import localItems from "../../src/data/scroll-items.json";
 import videoAltText from "../../src/data/video-alt-text.json";
 import { triggerSiteDeploy } from "./lib/github.js";
 import { chooseWide, missingHeaders, nextItemNumber, rowValues, toRow } from "./lib/rows.js";
-import { planSequence, spacingWarnings } from "./lib/sequence.js";
+import { planRespace, planSequence, spacingWarnings } from "./lib/sequence.js";
 import { createSheetsClient } from "./lib/sheets.js";
 
 const MB = 1024 * 1024;
@@ -372,6 +373,27 @@ async function fillAlts(env, deps) {
   return json({ filled: cells.length, remaining });
 }
 
+async function respace(request, env, deps) {
+  const input = await body(request).catch(() => ({}));
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const missing = missingHeaders(tab.headers);
+  if (missing.length) throw new HttpError(409, `${itemsTab} is missing column(s): ${missing.join(", ")}.`);
+  const plan = planRespace(existingItems(tab));
+  if (input.dryRun || !plan.moves.length) return json({ dryRun: Boolean(input.dryRun), ...plan });
+
+  const column = tab.headers.indexOf("order");
+  const cells = plan.moves.map((move) => ({
+    row: tab.rows.find((row) => row.id === move.id)._row,
+    column,
+    value: String(move.order)
+  }));
+  await sheets.updateCells(itemsTab, cells);
+  const deploy = await triggerSiteDeploy(env, deps.fetch);
+  return json({ dryRun: false, ...plan, deploy });
+}
+
 async function editItem(request, env, deps, id) {
   const input = await body(request);
   const sheets = sheetsFor(env, deps);
@@ -548,6 +570,7 @@ export async function handle(request, env, deps = {}) {
     }
     if (parts[0] === "content" && method === "GET") return await readContent(env, deps);
     if (parts[0] === "items" && parts[1] === "fill-alts" && method === "POST") return await fillAlts(env, deps);
+    if (parts[0] === "respace" && method === "POST") return await respace(request, env, deps);
     if (parts[0] === "deploy" && method === "POST") {
       // Live edits reach visitors at once; this rebuilds the pages search engines read.
       const deploy = await triggerSiteDeploy(env, deps.fetch);

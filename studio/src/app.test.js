@@ -355,3 +355,31 @@ describe("rows without an id", () => {
     expect(preview.data.sequence.every(Boolean)).toBe(true);
   });
 });
+
+describe("re-space", () => {
+  it("previews, then writes only the moved pieces' order and refreshes the site", async () => {
+    const orderColumn = HEADERS.indexOf("order");
+    const projectColumn = HEADERS.indexOf("data-project");
+    // Two Surf Overdose pieces sitting right after "{ Keep scrolling }", next to the opener.
+    for (const [id, order] of [["scroll-item-58", "22"], ["scroll-item-59", "27"]]) {
+      const row = HEADERS.map(() => "");
+      row[0] = id;
+      row[HEADERS.indexOf("data-media-type")] = "image";
+      row[projectColumn] = "surf overdose";
+      row[orderColumn] = order;
+      sheets.tabs.Sheet1.push(row);
+    }
+    const before = JSON.stringify(sheets.tabs.Sheet1);
+    const preview = await api("POST", "/api/respace", { json: { dryRun: true } });
+    expect(preview.data.moves.length).toBeGreaterThan(0);
+    expect(preview.data.remaining).toBe(0);
+    expect(JSON.stringify(sheets.tabs.Sheet1)).toBe(before);
+
+    const applied = await api("POST", "/api/respace", { json: {} });
+    expect(applied.data.deploy).toEqual({ ok: true });
+    const changed = sheets.calls.filter((c) => c.type === "update").flatMap((c) => c.cells);
+    expect(changed.every((cell) => cell.column === orderColumn)).toBe(true);
+    expect(changed).toHaveLength(applied.data.moves.length);
+    expect((await api("GET", "/api/content")).data.spacing).toEqual([]);
+  });
+});
