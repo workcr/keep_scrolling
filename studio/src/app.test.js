@@ -406,3 +406,62 @@ describe("deleting", () => {
     expect((await api("GET", "/api/project-drafts")).data.projects).toEqual([]);
   });
 });
+
+describe("library", () => {
+  const pieces = [
+    { key: "SJC_Scene-03-Closer0001 1-5", kind: "image", src: "assets/SJC_Scene-03-Closer0001 1-5.webp", variants: { 320: "assets/SJC_Scene-03-Closer0001 1-5-320.webp" }, width: 2560, height: 1440, project: "surf overdose" },
+    { key: "EQ_New Cap", kind: "image", src: "assets/EQ_New Cap.webp", variants: { 960: "assets/EQ_New Cap-960.webp" }, width: 1200, height: 1500, project: "ocideia" },
+    { key: "DTMS_post_01", kind: "video", src: "assets/DTMS_post_01.mp4", variants: {}, width: 1080, height: 1080, project: "dtms branding" },
+    { key: "CR Glass Logo 360 New", kind: "video", src: "assets/CR Glass Logo 360 New.mp4", variants: {}, width: 1080, height: 1080, project: "cr branding", alreadyOnSite: "cr-logo-animation.mp4" }
+  ];
+  const libraryApi = async (method, path, options) => {
+    const init = { method, headers: {} };
+    if (options?.json) {
+      init.body = JSON.stringify(options.json);
+      init.headers["Content-Type"] = "application/json";
+    }
+    const response = await handle(new Request(`${BASE}${path}`, init), env, { ...deps(), library: pieces });
+    return { status: response.status, data: await response.json() };
+  };
+
+  it("lists only what isn't on the site, matching sizes and URL-encoded names", async () => {
+    const values = { id: "scroll-item-900", "data-media-type": "image", src: "", srcset: "assets/EQ_New%20Cap-320.webp 320w" };
+    sheets.tabs.Sheet1.push(HEADERS.map((h) => values[h] ?? ""));
+    const { data } = await libraryApi("GET", "/api/library");
+    const keys = data.pieces.map((p) => p.key);
+    expect(keys).not.toContain("SJC_Scene-03-Closer0001 1-5"); // in the sample sheet
+    expect(keys).not.toContain("EQ_New Cap"); // live under a different size
+    expect(keys).toEqual(["DTMS_post_01", "CR Glass Logo 360 New"]);
+    expect(data.pieces[1].alreadyOnSite).toBe("cr-logo-animation.mp4");
+  });
+
+  it("turns pieces into drafts once, and publishes them without uploads", async () => {
+    const added = await libraryApi("POST", "/api/library/add", { json: { keys: ["EQ_New Cap", "DTMS_post_01"] } });
+    expect(added.data).toEqual({ added: 2, skipped: 0 });
+    expect((await libraryApi("POST", "/api/library/add", { json: { keys: ["EQ_New Cap"] } })).data).toEqual({ added: 0, skipped: 1 });
+    expect((await libraryApi("POST", "/api/library/add", { json: { keys: ["nope"] } })).status).toBe(404);
+    expect((await libraryApi("GET", "/api/library")).data.pieces.find((p) => p.key === "EQ_New Cap").inDrafts).toBe(true);
+
+    const { drafts } = (await api("GET", "/api/drafts")).data;
+    const image = drafts.find((d) => d.library_key === "EQ_New Cap");
+    expect(image).toMatchObject({ kind: "image", project: "ocideia", src: "assets/EQ_New Cap.webp", width: 1200, height: 1500 });
+
+    // The AI sees full, encoded URLs on the website; library videos have no frames to show it.
+    aiReply = { project: "ocideia", project_is_new: false, project_reason: "", client: "", category: "", discipline: "", alt: "A cap.", confidence: "high" };
+    expect((await api("POST", `/api/drafts/${image.id}/ai`)).status).toBe(200);
+    expect(aiCalls[0].messages[0].content[0].source.url).toBe("https://keep-scrolling.com/assets/EQ_New%20Cap-960.webp");
+    const video = drafts.find((d) => d.library_key === "DTMS_post_01");
+    const refused = await api("POST", `/api/drafts/${video.id}/ai`);
+    expect(refused.status).toBe(422);
+    expect(refused.data.error).toMatch(/by hand/);
+
+    await api("PATCH", `/api/drafts/${video.id}`, { json: { alt: "Animated poster." } });
+    const result = await api("POST", "/api/publish", { json: { draftIds: [image.id, video.id], openerDraftId: null } });
+    expect(result.status).toBe(200);
+    const appended = sheets.tabs.Sheet1.slice(-2).map((cells) => Object.fromEntries(HEADERS.map((h, i) => [h, cells[i]])));
+    expect(appended.map((row) => row.src)).toEqual(["assets/EQ_New Cap.webp", "assets/DTMS_post_01.mp4"]);
+    expect(appended[0].srcset).toBe("assets/EQ_New Cap-960.webp 960w");
+    expect(appended[1]["data-media-type"]).toBe("video");
+    expect((await libraryApi("GET", "/api/library")).data.pieces.map((p) => p.key)).toEqual(["CR Glass Logo 360 New"]);
+  });
+});
