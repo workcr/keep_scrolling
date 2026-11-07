@@ -194,7 +194,10 @@ async function loadDrafts() {
   state.projectDrafts = projects;
   state.questions = questions || [];
   if (state.opener && !drafts.some((d) => d.id === state.opener)) state.opener = null;
-  if (!state.opener && drafts.length) state.opener = drafts[0].id;
+  // Uploads refresh the opening piece by default. Library pieces don't pick
+  // one by themselves: their order is alphabetical, not a choice.
+  if (!state.opener) state.opener = drafts.find((d) => !d.library_key)?.id || null;
+  if (!state.opener && drafts.length) $("#keep-opener").checked = true;
   renderDrafts();
 }
 
@@ -273,7 +276,10 @@ function renderDrafts() {
               type: "radio",
               name: "opener",
               checked: state.opener === draft.id,
-              onchange: () => (state.opener = draft.id)
+              onchange: () => {
+                state.opener = draft.id;
+                $("#keep-opener").checked = false;
+              }
             }),
             "Opening piece"
           ),
@@ -487,7 +493,9 @@ function renderLibrary() {
     ? `${pieces.length} of ${total} pieces in the assets folder aren't on the site (${onSite} are).`
     : `All ${total} pieces in the assets folder are on the site.`;
   const groups = new Map();
-  for (const piece of pieces) {
+  // Suggested pieces first within each project.
+  const ordered = [...pieces].sort((a, b) => Number(Boolean(b.suggested)) - Number(Boolean(a.suggested)));
+  for (const piece of ordered) {
     const name = piece.project || "No project yet";
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(piece);
@@ -535,7 +543,7 @@ function renderLibrary() {
                     updateLibraryButton();
                   }
                 }),
-                piece.key
+                `${piece.suggested ? "★ " : ""}${piece.key}`
               ),
               el(
                 "span",
@@ -553,8 +561,8 @@ function renderLibrary() {
   updateLibraryButton();
 }
 
-$("#library-all").addEventListener("click", () => {
-  for (const piece of state.library?.pieces || []) if (selectable(piece) && !piece.alreadyOnSite) state.picked.add(piece.key);
+$("#library-suggested").addEventListener("click", () => {
+  for (const piece of state.library?.pieces || []) if (selectable(piece) && piece.suggested) state.picked.add(piece.key);
   updateLibraryButton();
 });
 

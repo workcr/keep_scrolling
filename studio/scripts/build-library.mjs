@@ -21,8 +21,7 @@ const SKIP = [/^about-ul-/i, /^thanks-footer/i];
 // Filename family -> project name used in the sheet.
 const PROJECTS = [
   [/^(SJC_|Scene-0)/i, "surf overdose"],
-  [/^dtms_portfolio/i, "dtms portfolio"],
-  [/^DTMS_/i, "dtms branding"],
+  [/^(DTMS_|dtms_portfolio)/i, "dtms branding"],
   [/^Guarana/i, "2014 world cup"],
   [/^ATT Print/i, "cce"],
   [/^NIKE_MARATHON/i, "fastest ever"],
@@ -49,6 +48,47 @@ const ALREADY_ON_SITE = {
   "Octagrid_3D_6_1080p": "octagrid-kinetic-cube.mp4",
   "CR Glass Logo 360 New": "cr-logo-animation.mp4"
 };
+
+// A first pick, made by looking at every piece in November 2026: the strongest
+// and most varied few per project, so the scroll doesn't repeat one campaign.
+// The Library tab's "Select suggested" ticks these; everything else stays
+// available to add by hand.
+const SUGGESTED = new Set([
+  // surf overdose: hero cap, a poster, two on the model, the rack, one flat lay
+  "SJC_front-Scene-04-Closer0001 1-2",
+  "SJC_Poster_01",
+  "SJC_Scene-02_0090 1-1",
+  "SJC_Scene-02_0090 1-4",
+  "SJC_Scene-03-Closer0001 1-1",
+  "SJC_Scene-03-Closer0001 2-4",
+  // dtms branding
+  "DTMS_post_01",
+  "DTMS_post_02",
+  "DTMS_post_08",
+  "DTMS_post_20",
+  "dtms_portfolio_05",
+  "dtms_portfolio_09",
+  // 2014 world cup
+  "Guarana_1920x1080_Latas6",
+  "Guarana_1920x1080_Latas8",
+  "Guarana_1920x1080_Latas11",
+  "Guarana_1920x1080_Latas12",
+  "Guarana_Poster_Mockup_Latas_06",
+  "Guarana_White_Bus_Stop_Raça",
+  // smaller projects
+  "ATT Print 01",
+  "ATT Print 04",
+  "NIKE_MARATHON_BERLIN_SEP2018_16",
+  "NIKE_MARATHON_BERLIN_SEP2018_31",
+  "Follow_03",
+  "EQ_Flag_Blue",
+  "EQ_Photography",
+  "Octa-grid animation 2",
+  "Octagrid_3D_7",
+  "OW_Poster_03",
+  "OW_T_Shirt_01",
+  "WKSP_ID_14"
+]);
 
 // ---- dimensions from file headers -----------------------------------------
 
@@ -160,7 +200,8 @@ export function buildLibrary(dir = ASSETS) {
       width: size[0],
       height: size[1],
       project: PROJECTS.find(([pattern]) => pattern.test(key))?.[1] || "",
-      ...(ALREADY_ON_SITE[key] ? { alreadyOnSite: ALREADY_ON_SITE[key] } : {})
+      ...(ALREADY_ON_SITE[key] ? { alreadyOnSite: ALREADY_ON_SITE[key] } : {}),
+      ...(SUGGESTED.has(key) ? { suggested: true } : {})
     });
   }
   return entries;
