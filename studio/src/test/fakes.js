@@ -5,8 +5,10 @@ import { DatabaseSync } from "node:sqlite";
 
 export function fakeD1() {
   const db = new DatabaseSync(":memory:");
-  const schema = fs.readFileSync(new URL("../../migrations/0001_drafts.sql", import.meta.url), "utf8");
-  db.exec(schema);
+  const dir = new URL("../../migrations/", import.meta.url);
+  for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".sql")).sort()) {
+    db.exec(fs.readFileSync(new URL(file, dir), "utf8"));
+  }
   const statement = (sql, args = []) => ({
     bind: (...values) => statement(sql, values),
     first: async () => db.prepare(sql).get(...args) ?? null,

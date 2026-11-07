@@ -14,6 +14,7 @@ on:
       - "studio/**"
       - "src/data/**"
       - "src/altText.js"
+      - "src/assets/**"
       - ".github/workflows/studio.yml"
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - "studio/**"
       - "src/data/**"
       - "src/altText.js"
+      - "src/assets/**"
       - ".github/workflows/studio.yml"
   workflow_dispatch:
 
@@ -46,6 +48,7 @@ jobs:
           cache: npm
           cache-dependency-path: studio/package-lock.json
       - run: npm ci
+      - run: npm run library
       - run: npm test
 
   deploy:
@@ -67,6 +70,8 @@ jobs:
           cache: npm
           cache-dependency-path: studio/package-lock.json
       - run: npm ci
+      # Lists src/assets for the Library tab, so new files show up there.
+      - run: npm run library
 
       - name: Check setup
         id: setup

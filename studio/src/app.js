@@ -19,6 +19,8 @@
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
 //   DELETE /api/items/:id                  remove a piece's row from Sheet1 (its files stay in R2)
 //   DELETE /api/projects/:name             remove a project's row from the projects tab (refused while pieces use it)
+//   GET    /api/library                    pieces in src/assets that aren't on the site yet
+//   POST   /api/library/add                { keys } -> drafts for those pieces (no upload needed)
 //   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
 //                                          openerDraftId: piece to open the site with
 //                                          (default: the first draft; null keeps the current opener)
@@ -27,6 +29,7 @@ import { checkAccess, refusalMessage } from "./lib/access.js";
 import { AiError, QUESTIONS, buildCatalog, createClient, draftMedia, writeDescription } from "./lib/ai.js";
 import { PLACEHOLDER_ALT, createAltLookup } from "../../src/altText.js";
 import localItems from "../../src/data/scroll-items.json";
+import library from "./generated/library.json";
 import videoAltText from "../../src/data/video-alt-text.json";
 import { triggerSiteDeploy } from "./lib/github.js";
 import { chooseWide, missingHeaders, nextItemNumber, rowValues, toRow } from "./lib/rows.js";
@@ -34,6 +37,8 @@ import { planRespace, planSequence, spacingWarnings } from "./lib/sequence.js";
 import { createSheetsClient } from "./lib/sheets.js";
 
 const MB = 1024 * 1024;
+// Library pieces are served by the website itself, under /assets/.
+const SITE_BASE = "https://keep-scrolling.com/";
 
 // What may be uploaded into each slot.
 const SLOTS = {
@@ -206,7 +211,7 @@ async function deleteDraft(env, id) {
 }
 
 async function listDrafts(env) {
-  const { results } = await env.DB.prepare("SELECT * FROM drafts WHERE status = 'draft' ORDER BY created_at").all();
+  const { results } = await env.DB.prepare("SELECT * FROM drafts WHERE status = 'draft' ORDER BY created_at, rowid").all();
   return json({ drafts: results.map(parseDraft) });
 }
 
@@ -239,14 +244,32 @@ async function liveCatalog(env, deps) {
   }
 }
 
+// Library drafts point at "assets/…" on the website; the AI needs full URLs.
+export function siteUrl(src) {
+  if (!src || /^https?:/i.test(src)) return src;
+  return SITE_BASE + String(src).replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
+}
+
+function forAi(draft) {
+  if (!draft.library_key) return draft;
+  return {
+    ...draft,
+    src: siteUrl(draft.src),
+    variants: Object.fromEntries(Object.entries(draft.variants).map(([width, url]) => [width, siteUrl(url)]))
+  };
+}
+
 async function aiDraft(env, deps, id) {
   const draft = await getDraft(env, id);
   if (draft.status !== "draft") throw new HttpError(409, "This draft is already published.");
+  if (draft.library_key && draft.kind === "video") {
+    throw new HttpError(422, "The AI can only look at still frames, and videos from the Library don't have any. Fill this one in by hand.");
+  }
   const client = aiFor(env, deps);
   const catalog = await liveCatalog(env, deps);
   let suggestion;
   try {
-    ({ suggestion } = await draftMedia(client, draft, catalog));
+    ({ suggestion } = await draftMedia(client, forAi(draft), catalog));
   } catch (error) {
     if (error instanceof AiError) throw new HttpError(502, error.message);
     throw error;
@@ -439,6 +462,79 @@ async function editItem(request, env, deps, id) {
   return json({ updated: id, fields: cells.length });
 }
 
+// ---- library ----------------------------------------------------------------
+
+// "assets/SJC_Scene-03-320.webp" and ".../SJC_Scene-03.png" both -> "sjc_scene-03",
+// the same grouping as scripts/build-library.mjs.
+export function pieceKey(url) {
+  let name = String(url || "").trim().split(/[?#]/)[0].split("/").pop();
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    // keep it as written
+  }
+  return name
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/-(320|640|960|1080|1600)p?$/, "")
+    .toLowerCase();
+}
+
+function liveKeys(rows) {
+  const keys = new Set();
+  for (const row of rows) {
+    if (row.src) keys.add(pieceKey(row.src));
+    for (const part of String(row.srcset || "").split(",")) {
+      const url = part.trim().split(/\s+/)[0];
+      if (url) keys.add(pieceKey(url));
+    }
+  }
+  return keys;
+}
+
+async function pendingLibraryKeys(env) {
+  const { results } = await env.DB.prepare("SELECT library_key FROM drafts WHERE status = 'draft' AND library_key IS NOT NULL").all();
+  return new Set(results.map((row) => row.library_key));
+}
+
+async function listLibrary(env, deps, pieces) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const live = liveKeys(tab.rows);
+  const pending = await pendingLibraryKeys(env);
+  const notLive = pieces.filter((piece) => !live.has(piece.key.toLowerCase()));
+  return json({
+    total: pieces.length,
+    onSite: pieces.length - notLive.length,
+    pieces: notLive.map((piece) => ({ ...piece, inDrafts: pending.has(piece.key) }))
+  });
+}
+
+async function addFromLibrary(request, env, pieces) {
+  const input = await body(request);
+  const keys = Array.isArray(input.keys) ? [...new Set(input.keys.map(String))] : [];
+  if (!keys.length) throw new HttpError(400, "Choose at least one piece.");
+  const byKey = new Map(pieces.map((piece) => [piece.key, piece]));
+  const unknown = keys.filter((key) => !byKey.has(key));
+  if (unknown.length) throw new HttpError(404, `Not in the library: ${unknown.join(", ")}.`);
+  const pending = await pendingLibraryKeys(env);
+  const added = [];
+  for (const key of keys) {
+    if (pending.has(key)) continue;
+    const piece = byKey.get(key);
+    const id = crypto.randomUUID();
+    const time = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO drafts (id, created_at, updated_at, status, kind, file_name, width, height, src, variants, frames, project, library_key)
+       VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
+    )
+      .bind(id, time, time, piece.kind, piece.src.split("/").pop(), piece.width, piece.height, piece.src, JSON.stringify(piece.variants || {}), piece.project || null, key)
+      .run();
+    added.push(id);
+  }
+  return json({ added: added.length, skipped: keys.length - added.length }, 201);
+}
+
 // Write (or update) project descriptions in the "projects" tab.
 async function writeProjectDescriptions(sheets, projectsTab, descriptions) {
   if (!descriptions.length) return [];
@@ -468,7 +564,7 @@ async function publish(request, env, deps) {
 
   const placeholders = ids.map(() => "?").join(", ");
   const { results } = await env.DB.prepare(
-    `SELECT * FROM drafts WHERE status = 'draft' AND id IN (${placeholders}) ORDER BY created_at`
+    `SELECT * FROM drafts WHERE status = 'draft' AND id IN (${placeholders}) ORDER BY created_at, rowid`
   )
     .bind(...ids)
     .all();
@@ -478,7 +574,7 @@ async function publish(request, env, deps) {
   const problems = [];
   for (const draft of drafts) {
     if (!draft.src) problems.push(`${draft.file_name}: the file hasn't finished uploading.`);
-    if (draft.kind === "image" && Object.keys(draft.variants).length < 4) problems.push(`${draft.file_name}: smaller sizes are missing.`);
+    if (draft.kind === "image" && !draft.library_key && Object.keys(draft.variants).length < 4) problems.push(`${draft.file_name}: smaller sizes are missing.`);
     if (!draft.project) problems.push(`${draft.file_name}: choose a project.`);
   }
   if (problems.length) throw new HttpError(422, problems.join(" "));
@@ -609,6 +705,8 @@ export async function handle(request, env, deps = {}) {
     if (parts[0] === "projects" && parts.length === 2 && method === "DELETE") return await deleteProject(env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
+    if (parts[0] === "library" && parts.length === 1 && method === "GET") return await listLibrary(env, deps, deps.library || library);
+    if (parts[0] === "library" && parts[1] === "add" && method === "POST") return await addFromLibrary(request, env, deps.library || library);
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);
     return json({ error: "Not found." }, 404);
   } catch (error) {

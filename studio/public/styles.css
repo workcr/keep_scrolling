@@ -128,3 +128,13 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .missing { font-size: 12px; color: var(--warn); }
 .busy { opacity: 0.55; pointer-events: none; }
 .spacing .pill { margin-top: 8px; color: var(--ink); }
+
+/* Library */
+.library-group h2 { display: flex; align-items: baseline; gap: 6px; }
+.library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.library-piece { display: flex; flex-direction: column; gap: 4px; font-size: 12px; cursor: pointer; min-width: 0; }
+.library-piece.done { opacity: 0.5; cursor: default; }
+.library-thumb { aspect-ratio: 4 / 3; background: var(--soft); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.library-thumb img, .library-thumb video, .library-thumb .vid { width: 100%; height: 100%; object-fit: cover; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.library-name { display: flex; gap: 6px; align-items: flex-start; word-break: break-word; }
+.small { font-size: 11px; }

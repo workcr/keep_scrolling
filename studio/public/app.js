@@ -78,7 +78,9 @@ const state = {
   opener: null, // draft id chosen to open the site
   questions: [], // the AI's questions for a project description
   missing: new Map(), // project key -> facts the AI said would strengthen the description
-  previews: new Map() // draft id -> object URL of the local preview
+  previews: new Map(), // draft id -> object URL of the local preview
+  library: null, // { pieces, total, onSite } from /api/library
+  picked: new Set() // library keys ticked to add
 };
 
 function liveProjects() {
@@ -108,7 +110,9 @@ for (const button of document.querySelectorAll(".tabs button")) {
     for (const other of document.querySelectorAll(".tabs button")) other.setAttribute("aria-selected", String(other === button));
     $("#tab-new").hidden = button.dataset.tab !== "new";
     $("#tab-live").hidden = button.dataset.tab !== "live";
+    $("#tab-library").hidden = button.dataset.tab !== "library";
     if (button.dataset.tab === "live") renderLive();
+    if (button.dataset.tab === "library") loadLibrary();
   });
 }
 
@@ -196,6 +200,11 @@ async function loadDrafts() {
 
 function thumbFor(draft) {
   const local = state.previews.get(draft.id);
+  if (!local && draft.library_key) {
+    // Library pieces live on the website (relative "assets/…" paths).
+    if (draft.kind === "video") return liveVideoThumb({ "data-media-type": "video", src: draft.src });
+    return el("img", { src: absoluteUrl(draft.variants?.["640"] || draft.src), alt: "", loading: "lazy" });
+  }
   const src = local || (draft.kind === "video" ? draft.poster : draft.variants?.["640"] || draft.src);
   return src ? el("img", { src, alt: "" }) : el("span", { class: "muted" }, draft.kind);
 }
@@ -250,7 +259,9 @@ function renderDrafts() {
         el(
           "div",
           { class: "tools" },
-          el("button", { type: "button", class: "pill small", onclick: () => runAi(draft.id) }, draft.ai ? "Ask AI again" : "Draft with AI")
+          draft.library_key && draft.kind === "video"
+            ? el("span", { class: "muted" }, "The AI can't watch videos from the Library: fill this one in by hand.")
+            : el("button", { type: "button", class: "pill small", onclick: () => runAi(draft.id).catch(() => {}) }, draft.ai ? "Ask AI again" : "Draft with AI")
         ),
         el(
           "div",
@@ -316,15 +327,24 @@ async function runAi(id, { quiet = false } = {}) {
 $("#ai-all").addEventListener("click", async () => {
   const button = $("#ai-all");
   button.disabled = true;
+  // Only drafts the AI hasn't seen yet; "Ask AI again" on a card redoes one.
+  const todo = state.drafts.filter((draft) => !draft.ai && !(draft.library_key && draft.kind === "video"));
   let done = 0;
+  let failed = 0;
   try {
-    for (const draft of state.drafts) {
-      button.textContent = `Drafting ${++done} of ${state.drafts.length}…`;
-      await runAi(draft.id, { quiet: true });
+    for (const draft of todo) {
+      button.textContent = `Drafting ${++done} of ${todo.length}…`;
+      try {
+        await runAi(draft.id, { quiet: true });
+      } catch (error) {
+        failed += 1;
+        // A bad key or an outage won't fix itself on the next card.
+        if (/key|set up|credit|busy/i.test(error.message)) break;
+      }
     }
-    notify("AI drafts are in. Check every card before publishing.", "ok");
-  } catch {
-    // runAi already showed the error
+    if (!todo.length) notify("Every draft already has an AI suggestion. Use “Ask AI again” on a card to redo one.", "ok");
+    else if (!failed) notify("AI drafts are in. Check every card before publishing.", "ok");
+    else notify(`${failed} of ${todo.length} AI drafts didn't work (see the message above). The rest are in.`, "error");
   } finally {
     button.disabled = false;
     button.textContent = "Draft all with AI";
@@ -421,6 +441,142 @@ function renderProjectTexts() {
     );
   }
 }
+
+// ---------------------------------------------------------------- library
+
+async function loadLibrary() {
+  $("#library-count").textContent = "Loading…";
+  try {
+    state.library = await api("GET", "/api/library");
+  } catch (error) {
+    state.library = null;
+    $("#library-count").textContent = "";
+    $("#library").replaceChildren(el("p", { class: "muted" }, error.message));
+    return;
+  }
+  const available = new Set(state.library.pieces.filter((p) => !p.inDrafts).map((p) => p.key));
+  for (const key of state.picked) if (!available.has(key)) state.picked.delete(key);
+  renderLibrary();
+}
+
+function selectable(piece) {
+  return !piece.inDrafts;
+}
+
+function updateLibraryButton() {
+  const button = $("#library-add");
+  button.disabled = state.picked.size === 0;
+  button.textContent = state.picked.size ? `Add ${state.picked.size} to drafts` : "Add to drafts";
+  for (const box of document.querySelectorAll("#library input[data-key]")) box.checked = state.picked.has(box.dataset.key);
+  for (const box of document.querySelectorAll("#library input[data-group]")) {
+    const keys = JSON.parse(box.dataset.group);
+    const ticked = keys.filter((key) => state.picked.has(key)).length;
+    box.checked = keys.length > 0 && ticked === keys.length;
+    box.indeterminate = ticked > 0 && ticked < keys.length;
+  }
+}
+
+function libraryThumb(piece) {
+  if (piece.kind === "video") return liveVideoThumb({ "data-media-type": "video", src: piece.src });
+  return liveThumb({ "data-media-type": piece.kind, src: piece.src, srcset: piece.variants?.["320"] ? `${piece.variants["320"]} 320w` : "" });
+}
+
+function renderLibrary() {
+  const { pieces, total, onSite } = state.library;
+  $("#library-count").textContent = pieces.length
+    ? `${pieces.length} of ${total} pieces in the assets folder aren't on the site (${onSite} are).`
+    : `All ${total} pieces in the assets folder are on the site.`;
+  const groups = new Map();
+  for (const piece of pieces) {
+    const name = piece.project || "No project yet";
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(piece);
+  }
+  const box = $("#library");
+  box.replaceChildren();
+  for (const [name, list] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    // "Select the group" leaves out duplicates of videos already on the site.
+    const groupKeys = list.filter((p) => selectable(p) && !p.alreadyOnSite).map((p) => p.key);
+    box.append(
+      el(
+        "section",
+        { class: "library-group" },
+        el(
+          "h2",
+          {},
+          el("label", { class: "check" }, el("input", {
+            type: "checkbox",
+            disabled: groupKeys.length === 0,
+            dataset: { group: JSON.stringify(groupKeys) },
+            onchange: (event) => {
+              for (const key of groupKeys) event.target.checked ? state.picked.add(key) : state.picked.delete(key);
+              updateLibraryButton();
+            }
+          }), name),
+          el("span", { class: "muted" }, ` ${list.length}`)
+        ),
+        el(
+          "div",
+          { class: "library-grid" },
+          list.map((piece) =>
+            el(
+              "label",
+              { class: `library-piece${piece.inDrafts ? " done" : ""}`, title: piece.src.split("/").pop() },
+              el("div", { class: "library-thumb" }, libraryThumb(piece)),
+              el(
+                "span",
+                { class: "library-name" },
+                el("input", {
+                  type: "checkbox",
+                  disabled: !selectable(piece),
+                  dataset: { key: piece.key },
+                  onchange: (event) => {
+                    event.target.checked ? state.picked.add(piece.key) : state.picked.delete(piece.key);
+                    updateLibraryButton();
+                  }
+                }),
+                piece.key
+              ),
+              el(
+                "span",
+                { class: "muted small" },
+                `${piece.kind} · ${piece.width}×${piece.height}`,
+                piece.inDrafts ? " · in drafts" : "",
+                piece.alreadyOnSite ? ` · already on the site as ${piece.alreadyOnSite}` : ""
+              )
+            )
+          )
+        )
+      )
+    );
+  }
+  updateLibraryButton();
+}
+
+$("#library-all").addEventListener("click", () => {
+  for (const piece of state.library?.pieces || []) if (selectable(piece) && !piece.alreadyOnSite) state.picked.add(piece.key);
+  updateLibraryButton();
+});
+
+$("#library-none").addEventListener("click", () => {
+  state.picked.clear();
+  updateLibraryButton();
+});
+
+$("#library-add").addEventListener("click", async () => {
+  const button = $("#library-add");
+  button.disabled = true;
+  try {
+    const { added } = await api("POST", "/api/library/add", { keys: [...state.picked] });
+    state.picked.clear();
+    await loadDrafts();
+    notify(`Added ${added} piece${added === 1 ? "" : "s"} to drafts. Next: “Draft all with AI”, check the cards, then Publish.`, "ok");
+    document.querySelector('.tabs button[data-tab="new"]').click();
+  } catch (error) {
+    notify(error.message, "error");
+    updateLibraryButton();
+  }
+});
 
 // ---------------------------------------------------------------- preview & publish
 
