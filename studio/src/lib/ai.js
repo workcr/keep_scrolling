@@ -51,12 +51,47 @@ const DESCRIPTION_SCHEMA = {
   }
 };
 
-export const DEFAULT_STYLE_EXAMPLE = `Surf Overdose was the first apparel collection created for Surf Junkie Club, a community of surf lovers who treat the ocean like an addiction. A good one.
-The goal was to design exclusive pieces that visually express this feeling: the uncontrollable urge to surf, to chase waves, to stay close to the sea.
-The collection featured 3,280 limited-edition pieces, all produced on-demand with a focus on craft and comfort. Each item — from oversized tees and hoodies to shirts and caps — was designed to match the relaxed attitude that defines surf culture.
-Visually, the collection embraced a bold graphic and typographic language, bringing the club's raw, obsessive energy to life through expressive typography, clean compositions, and tactile details.
-Credits
-Designers: Cacá Barabás, Rodrigo Mendes. Copywriter: Caio Mattoso. 3D Designer: Flavio Carvalho. Brand Strategy: Marcelo Serpa, Felipe Baracchini. Production: Felipe Baracchini. Typeface: Söhne Breit by Klim Type Foundry.`;
+// The owner's own descriptions, agreed as the house style. Used as examples
+// of tone and structure only; their facts never carry over to other projects.
+export const STYLE_EXAMPLES = [
+  `For Nike, we turned the Brazilian way of playing football into a single word: #brasileiragem.
+
+The style is hard to put into words, so we invented one. Part slang, it captures the creativity, flair, and swagger Brazilians bring to the game.
+
+To help turn #brasileiragem into a cultural movement, we teamed up with singer-songwriter Fabio Brazza on an original song, “Brasileiragem,” released on radio and streaming platforms as part of the campaign.
+
+I worked on it as Creative Director at Wieden+Kennedy (2016).`,
+  `“Connecting Changes Everything” gave AT&T a new brand voice, shifting the focus from deals and promotions to the power of human connection.
+
+After years of mostly retail advertising, AT&T needed to show what it stood for beyond great prices. I worked on the campaign as Creative Director at BBDO (2023).
+
+As part of it, we created a print series of intimate portraits by photographer Magdalena Wosinska, each paired with a short, personal story about how connectivity made a real difference in someone’s life.`,
+  `In 2024, I created the visual identity for CR, the name my former creative partner, Caio Mattoso, and I worked under. It’s set in Octagrid, the first typeface I designed.
+
+Typography has always been central to how I work, and our own brand was the obvious place to use it.
+
+We positioned ourselves as creative directors who combine strategic thinking with a passion for crafting ideas and design systems that help brands make a lasting impact on culture.
+
+We created everything from the logo and website to social media assets, posters, and apparel.
+
+Fun fact: Octagrid is also the typeface you’re reading right now.`,
+  `I designed the visual identity for Don’t Touch My Soda, film director Felipe Mansur’s new production company.
+
+Felipe, a longtime friend, already had the name. He wanted the company to be a creative sanctuary, where his team could protect great ideas and the craft behind them. For the logo, he wanted to capture the lettering he remembered from soda cans growing up.
+
+I took that starting point and mixed in influences from designers like Herb Lubalin, whose work combined expressive typography, bold personality, and timeless style.
+
+I brought the identity to life with designer Cacá Barabás and motion designer Everton Guilherme.`,
+  `Surf Overdose was the first apparel collection for Surf Junkie Club, a community of surf lovers who treat the ocean like an addiction. A good one.
+
+The idea was to capture that irresistible urge to surf, chase the next wave, and spend as much time in the ocean as possible.
+
+The collection featured 3,280 limited-edition pieces, produced on demand with a focus on quality, craft, and comfort. From oversized tees and hoodies to shirts and caps, every piece reflected the laid-back attitude of surf culture.
+
+Visually, we went bold: expressive typography, clean compositions, and tactile details that bring the club’s raw, obsessive energy to life, all set in Söhne Breit by Klim Type Foundry.
+
+I designed the collection with Cacá Barabás. 3D design by Flavio Carvalho; brand strategy by Caio Mattoso, Marcelo Serpa, and Felipe Baracchini, who also led production.`
+];
 
 const MEDIA_SYSTEM = `You are the picture editor for the portfolio of Rodrigo Mendes, a Creative Director (keep-scrolling.com). For each uploaded piece you suggest catalogue fields and write alt text.
 
@@ -73,14 +108,21 @@ Catalogue rules:
 - Client: only if it is the existing project's client, or a brand is unmistakably visible. Never guess.
 - confidence: how sure you are about the project match.`;
 
-const DESCRIPTION_SYSTEM = `You write project descriptions for the portfolio of Rodrigo Mendes, a Creative Director (keep-scrolling.com).
+const DESCRIPTION_SYSTEM = `You write project descriptions for the portfolio of Rodrigo Mendes, a Creative Director (keep-scrolling.com), in his own voice.
 
-Rules:
-- Use ONLY facts from the owner's answers and what the alt texts say is visible. Never invent a role, client, year, credit, number, award or result. If something important is missing, list it in "missing" instead of filling the gap.
-- Match the style example: short paragraphs separated by line breaks, plain confident English, concrete details, no hype words ("innovative", "cutting-edge", "seamless"), no emojis or hashtags.
+Facts:
+- Use ONLY facts from the owner's answers and what the alt texts say is visible. Never invent a role, client, agency, year, credit, number, award or result. If something important is missing, list it in "missing" instead of filling the gap.
+- Don't add results or awards unless the owner's answers state them. Never brag.
+
+Voice and structure (match the examples):
+- First person: "I" for Rodrigo's own part, "we" for the team. Never the third person ("Rodrigo Mendes…").
 - Open with one sentence that says what the project is and for whom; it is shown under the link in search results (about 155 characters).
-- If credits were given, end with a line "Credits" followed by one line of "Role: Name." entries, as in the example.
-- Write about the work in the third person ("Rodrigo Mendes led…", "the collection…"), never "I" or "we", unless the owner's own wording requires it.`;
+- Name things precisely: keep the name of a client, company, brand or partnership separate from the work made for it. Write "I designed the visual identity for Don't Touch My Soda, Felipe Mansur's production company", never "Don't Touch My Soda is the visual identity…".
+- State Rodrigo's role, and the agency and year when given, in one plain sentence (e.g. "I worked on it as Creative Director at BBDO (2023).").
+- Three to five short paragraphs, separated by a blank line. Plain, warm, confident English with concrete details.
+- Credit collaborators in a closing sentence, each with their role ("with designer Cacá Barabás and motion designer Everton Guilherme"). No praise adjectives ("incredibly talented", "legendary", "perfect", "beautiful").
+- No hype words ("innovative", "cutting-edge", "seamless"), no emojis. Hashtags only when the hashtag is the campaign's own name.
+- American English with the Oxford comma, curly quotes.`;
 
 function catalogText({ projects }) {
   const lines = projects.map((p) => {
@@ -185,20 +227,22 @@ export const QUESTIONS = [
   { key: "year", label: "Year", hint: "e.g. 2024" },
   { key: "agency", label: "Agency or studio", hint: "where you made it, if any" },
   { key: "idea", label: "The idea or brief", hint: "what was the problem, what was the idea" },
-  { key: "result", label: "Result or recognition", hint: "awards, numbers, reactions; leave empty if none" },
+  { key: "result", label: "What happened after launch (optional)", hint: "e.g. released on radio and streaming; leave empty if you prefer" },
   { key: "credits", label: "Credits", hint: "Role: Name. Role: Name." }
 ];
 
 /**
- * @param {{ project: string, answers: Record<string,string>, alts: string[], styleExample?: string }} input
+ * @param {{ project: string, answers: Record<string,string>, alts: string[], examples?: string[] }} input
  */
-export async function writeDescription(client, { project, answers = {}, alts = [], styleExample }) {
+export async function writeDescription(client, { project, answers = {}, alts = [], examples = STYLE_EXAMPLES }) {
   const given = QUESTIONS.map(({ key, label }) => `${label}: ${String(answers[key] || "").trim() || "(not provided)"}`).join("\n");
   const content = [
     {
       type: "text",
       text: [
-        `Style example (match its tone and structure, not its facts):\n"""\n${styleExample || DEFAULT_STYLE_EXAMPLE}\n"""`,
+        `Examples of the house style (match their tone and structure, never their facts):\n${examples
+          .map((example, n) => `--- Example ${n + 1} ---\n${example}`)
+          .join("\n\n")}`,
         `Project: ${project}`,
         `Owner's answers:\n${given}`,
         `What the pieces show (alt texts):\n${alts.map((alt) => `- ${alt}`).join("\n") || "(none)"}`,
