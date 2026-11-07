@@ -276,12 +276,10 @@ async function aiWriteDescription(request, env, deps, name) {
   const catalog = await liveCatalog(env, deps);
   const live = catalog.projects.find((p) => p.project.toLowerCase() === key);
   const alts = [...results.map((row) => row.alt).filter(Boolean), ...(live?.alts || [])];
-  // Your own best description is the style reference (Surf Overdose by default).
-  const styleExample = catalog.descriptions.get("surf overdose") || undefined;
 
   let written;
   try {
-    written = await writeDescription(client, { project, answers, alts, styleExample });
+    written = await writeDescription(client, { project, answers, alts });
   } catch (error) {
     if (error instanceof AiError) throw new HttpError(502, error.message);
     throw error;
