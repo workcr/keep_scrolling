@@ -21,6 +21,8 @@
 //   DELETE /api/projects/:name             remove a project's row from the projects tab (refused while pieces use it)
 //   GET    /api/library                    pieces in src/assets that aren't on the site yet
 //   POST   /api/library/add                { keys } -> drafts for those pieces (no upload needed)
+//   PUT    /api/order                      { scope: "scroll", ids } or { scope: "project", project, ids }
+//                                          -> save a dragged order (home & gallery, or one project page)
 //   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
 //                                          openerDraftId: piece to open the site with
 //                                          (default: the first draft; null keeps the current opener)
@@ -462,6 +464,71 @@ async function editItem(request, env, deps, id) {
   return json({ updated: id, fields: cells.length });
 }
 
+// ---- order ------------------------------------------------------------------
+
+const PROJECT_ORDER = "project-order";
+
+function sameSet(a, b) {
+  return a.length === b.length && new Set(a).size === a.length && a.every((id) => b.includes(id));
+}
+
+// Saves the order dragged in the Order tab. The ids must be exactly the pieces
+// the tab showed, so a sheet edited in the meantime isn't half-overwritten.
+async function saveOrder(request, env, deps) {
+  const input = await body(request);
+  const ids = Array.isArray(input.ids) ? input.ids.map(String) : [];
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const stale = "The sheet changed since this page loaded. Reload the Order tab and try again.";
+
+  if (input.scope === "scroll") {
+    if (!sameSet(ids, tab.rows.map((row) => row.id))) throw new HttpError(409, stale);
+    const missing = missingHeaders(tab.headers);
+    if (missing.length) throw new HttpError(409, `${itemsTab} is missing column(s): ${missing.join(", ")}.`);
+    const textCards = tab.rows.filter((row) => String(row["data-media-type"]).toLowerCase() === "text").map((row) => row.id);
+    if (textCards.length && ids.indexOf(textCards[0]) !== 1) {
+      throw new HttpError(422, "“{ Keep scrolling }” has to stay second, right after the opening piece.");
+    }
+    const column = tab.headers.indexOf("order");
+    const byId = new Map(tab.rows.map((row) => [row.id, row]));
+    const cells = [];
+    ids.forEach((id, index) => {
+      const value = String((index + 1) * 10);
+      const row = byId.get(id);
+      if (String(row.order ?? "").trim() !== value) cells.push({ row: row._row, column, value });
+    });
+    await sheets.updateCells(itemsTab, cells);
+    const after = tab.rows.map((row) => ({ ...row, order: String((ids.indexOf(row.id) + 1) * 10) }));
+    return json({ saved: cells.length, spacing: spacingWarnings(existingItems({ rows: after }), 3) });
+  }
+
+  if (input.scope === "project") {
+    const key = String(input.project || "").trim().toLowerCase();
+    if (!key) throw new HttpError(400, "project is required.");
+    const rows = tab.rows.filter((row) => String(row["data-project"] || "").trim().toLowerCase() === key);
+    if (!rows.length) throw new HttpError(404, `No pieces in “${input.project}”.`);
+    if (!sameSet(ids, rows.map((row) => row.id))) throw new HttpError(409, stale);
+    let column = tab.headers.indexOf(PROJECT_ORDER);
+    if (column === -1) {
+      // First use: add the column at the end of row 1.
+      column = tab.headers.length;
+      await sheets.updateCells(itemsTab, [{ row: 1, column, value: PROJECT_ORDER }]);
+    }
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const cells = [];
+    ids.forEach((id, index) => {
+      const value = String(index + 1);
+      const row = byId.get(id);
+      if (String(row[PROJECT_ORDER] ?? "").trim() !== value) cells.push({ row: row._row, column, value });
+    });
+    await sheets.updateCells(itemsTab, cells);
+    return json({ saved: cells.length });
+  }
+
+  throw new HttpError(400, 'scope must be "scroll" or "project".');
+}
+
 // ---- library ----------------------------------------------------------------
 
 // "assets/SJC_Scene-03-320.webp" and ".../SJC_Scene-03.png" both -> "sjc_scene-03",
@@ -707,6 +774,7 @@ export async function handle(request, env, deps = {}) {
     if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "library" && parts.length === 1 && method === "GET") return await listLibrary(env, deps, deps.library || library);
     if (parts[0] === "library" && parts[1] === "add" && method === "POST") return await addFromLibrary(request, env, deps.library || library);
+    if (parts[0] === "order" && method === "PUT") return await saveOrder(request, env, deps);
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);
     return json({ error: "Not found." }, 404);
   } catch (error) {

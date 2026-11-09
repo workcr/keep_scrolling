@@ -138,3 +138,26 @@ main { padding: 24px; max-width: 1280px; margin: 0 auto; }
 .library-thumb img, .library-thumb video, .library-thumb .vid { width: 100%; height: 100%; object-fit: cover; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .library-name { display: flex; gap: 6px; align-items: flex-start; word-break: break-word; }
 .small { font-size: 11px; }
+
+/* Order */
+.order-scope { display: flex; align-items: center; gap: 8px; }
+.order-scope select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
+.order-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.order-card { position: relative; display: flex; flex-direction: column; gap: 4px; font-size: 12px; cursor: grab; border-radius: 6px; padding: 4px; min-width: 0; }
+.order-card.dragging { opacity: 0.3; }
+.order-card.locked { cursor: default; }
+.order-card.before { box-shadow: -4px 0 0 var(--accent); }
+.order-card.after { box-shadow: 4px 0 0 var(--accent); }
+.order-thumb { position: relative; aspect-ratio: 1; background: var(--soft); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.order-thumb img, .order-thumb video, .order-thumb .vid { width: 100%; height: 100%; object-fit: cover; display: flex; align-items: center; justify-content: center; color: var(--muted); pointer-events: none; text-align: center; }
+.order-pos { position: absolute; top: 4px; left: 4px; min-width: 24px; padding: 2px 6px; border: 0; border-radius: 10px; background: var(--ink); color: var(--paper); font: inherit; font-size: 11px; cursor: pointer; }
+.order-pos:disabled { cursor: default; opacity: 0.6; }
+.order-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-tag { font-size: 11px; color: var(--accent); }
+.order-card.wide .order-thumb::after { content: "wide"; position: absolute; bottom: 4px; right: 4px; font-size: 10px; background: var(--paper); color: var(--ink); padding: 1px 5px; border-radius: 8px; }
+/* Keep Save in reach while dragging down a long grid. */
+#tab-order .live-toolbar { position: sticky; bottom: 0; z-index: 5; background: var(--paper); border-top: 1px solid var(--line); padding: 12px 0; order: 2; }
+#tab-order { display: flex; flex-direction: column; }
+#tab-order[hidden] { display: none; }
+#tab-order #order-help { order: 0; }
+#tab-order .order-grid { order: 1; margin-bottom: 16px; }

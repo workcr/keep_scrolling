@@ -80,7 +80,8 @@ const state = {
   missing: new Map(), // project key -> facts the AI said would strengthen the description
   previews: new Map(), // draft id -> object URL of the local preview
   library: null, // { pieces, total, onSite } from /api/library
-  picked: new Set() // library keys ticked to add
+  picked: new Set(), // library keys ticked to add
+  order: { scope: "scroll", ids: [], dirty: false } // the Order tab's working copy
 };
 
 function liveProjects() {
@@ -111,6 +112,8 @@ for (const button of document.querySelectorAll(".tabs button")) {
     $("#tab-new").hidden = button.dataset.tab !== "new";
     $("#tab-live").hidden = button.dataset.tab !== "live";
     $("#tab-library").hidden = button.dataset.tab !== "library";
+    $("#tab-order").hidden = button.dataset.tab !== "order";
+    if (button.dataset.tab === "order") openOrder();
     if (button.dataset.tab === "live") renderLive();
     if (button.dataset.tab === "library") loadLibrary();
   });
@@ -586,6 +589,230 @@ $("#library-add").addEventListener("click", async () => {
   }
 });
 
+// ---------------------------------------------------------------- order
+
+// Same rules as the website (src/order.js): "order" for the home scroll and
+// gallery, "project-order" for a project page.
+function sortKey(item) {
+  const order = Number.parseFloat(item.order);
+  if (Number.isFinite(order)) return order;
+  const match = String(item.id || "").match(/(?:^|-)item-(\d+)$/i);
+  return (match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER / 10) * 10;
+}
+
+function compareForProject(a, b) {
+  const position = (item) => {
+    const value = Number.parseFloat(item["project-order"]);
+    return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+  };
+  const pa = position(a);
+  const pb = position(b);
+  if (pa !== pb) return pa < pb ? -1 : 1;
+  return sortKey(a) - sortKey(b);
+}
+
+const isTextItem = (item) => String(item["data-media-type"]).toLowerCase() === "text";
+
+function orderItems() {
+  return new Map((state.content?.items || []).map((item) => [item.id, item]));
+}
+
+function orderProjects() {
+  const names = new Map();
+  for (const item of state.content?.items || []) {
+    const name = String(item["data-project"] || "").trim();
+    if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+  }
+  return [...names.values()].sort((a, b) => a.localeCompare(b));
+}
+
+function openOrder() {
+  if (state.order.dirty) return renderOrder();
+  if (!state.content) {
+    $("#order-grid").replaceChildren(el("p", { class: "muted" }, "The Google Sheet isn't connected, so there's nothing to order yet."));
+    return;
+  }
+  const select = $("#order-scope");
+  const current = state.order.scope;
+  select.replaceChildren(
+    el("option", { value: "scroll" }, "Home & gallery"),
+    el("optgroup", { label: "Project pages" }, orderProjects().map((name) => el("option", { value: `project:${name}` }, name)))
+  );
+  select.value = [...select.options].some((o) => o.value === current) ? current : "scroll";
+  loadOrder(select.value);
+}
+
+function loadOrder(scope) {
+  const items = state.content?.items || [];
+  state.order.scope = scope;
+  if (scope === "scroll") {
+    state.order.ids = [...items].sort((a, b) => sortKey(a) - sortKey(b)).map((item) => item.id);
+  } else {
+    const key = scope.slice("project:".length).toLowerCase();
+    state.order.ids = items
+      .filter((item) => String(item["data-project"] || "").trim().toLowerCase() === key)
+      .sort(compareForProject)
+      .map((item) => item.id);
+  }
+  state.order.dirty = false;
+  renderOrder();
+}
+
+function setOrderDirty(dirty) {
+  state.order.dirty = dirty;
+  $("#order-save").disabled = !dirty;
+  $("#order-undo").disabled = !dirty;
+  $("#order-status").textContent = dirty ? "Not saved yet." : "";
+}
+
+// Move one piece to a new index. The text card always stays second.
+function moveOrder(id, toIndex) {
+  const ids = state.order.ids.filter((other) => other !== id);
+  ids.splice(Math.max(0, Math.min(toIndex, ids.length)), 0, id);
+  if (state.order.scope === "scroll") {
+    const items = orderItems();
+    const text = ids.find((other) => items.get(other) && isTextItem(items.get(other)));
+    if (text && ids.indexOf(text) !== 1) {
+      ids.splice(ids.indexOf(text), 1);
+      ids.splice(1, 0, text);
+    }
+  }
+  state.order.ids = ids;
+  setOrderDirty(true);
+  arrangeOrder();
+}
+
+// Move the existing cards instead of rebuilding them, so thumbnails and
+// videos don't reload on every drag.
+function arrangeOrder() {
+  const grid = $("#order-grid");
+  const cards = new Map([...grid.children].map((card) => [card.dataset.id, card]));
+  state.order.ids.forEach((id, index) => {
+    const card = cards.get(id);
+    if (!card) return;
+    grid.append(card);
+    card.querySelector(".order-pos").textContent = String(index + 1);
+    const tag = card.querySelector(".order-tag");
+    if (tag) tag.hidden = index !== 0;
+  });
+}
+
+let draggedId = null;
+
+function orderCard(item, index) {
+  const scroll = state.order.scope === "scroll";
+  const locked = scroll && isTextItem(item);
+  const card = el("div", {
+    class: `order-card${locked ? " locked" : ""}${String(item.class || "").includes("2col") ? " wide" : ""}`,
+    draggable: locked ? "false" : "true",
+    dataset: { id: item.id },
+    title: locked ? "“{ Keep scrolling }” always comes second." : "Drag to move"
+  });
+  const position = el(
+    "button",
+    {
+      type: "button",
+      class: "order-pos",
+      title: "Move to a position",
+      disabled: locked,
+      onclick: () => {
+        const answer = prompt(`Move ${item.id} to position (1–${state.order.ids.length}):`, String(state.order.ids.indexOf(item.id) + 1));
+        const to = Number.parseInt(answer, 10);
+        if (Number.isFinite(to)) moveOrder(item.id, to - 1);
+      }
+    },
+    String(index + 1)
+  );
+  const thumb = locked
+    ? el("div", { class: "vid" }, item.content || "{ Keep scrolling }")
+    : liveVideoThumb(item) || liveThumb(item) || el("div", { class: "vid" }, item["data-media-type"] || "media");
+  card.append(
+    el("div", { class: "order-thumb" }, thumb, position),
+    el("div", { class: "order-label" }, scroll ? item["data-project"] || "—" : "", el("span", { class: "muted" }, ` ${item.id}`))
+  );
+  if (scroll) card.append(el("div", { class: "order-tag", hidden: index !== 0 }, "Opening piece"));
+  if (!locked) {
+    card.addEventListener("dragstart", (event) => {
+      draggedId = item.id;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", item.id);
+      requestAnimationFrame(() => card.classList.add("dragging"));
+    });
+    card.addEventListener("dragend", () => {
+      draggedId = null;
+      card.classList.remove("dragging");
+      for (const other of document.querySelectorAll(".order-card.before, .order-card.after")) other.classList.remove("before", "after");
+    });
+  }
+  card.addEventListener("dragover", (event) => {
+    if (!draggedId || draggedId === item.id) return;
+    event.preventDefault();
+    const box = card.getBoundingClientRect();
+    const after = event.clientX > box.left + box.width / 2;
+    card.classList.toggle("after", after);
+    card.classList.toggle("before", !after);
+  });
+  card.addEventListener("dragleave", () => card.classList.remove("before", "after"));
+  card.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const after = card.classList.contains("after");
+    card.classList.remove("before", "after");
+    if (!draggedId || draggedId === item.id) return;
+    const target = state.order.ids.filter((other) => other !== draggedId).indexOf(item.id);
+    moveOrder(draggedId, target + (after ? 1 : 0));
+  });
+  return card;
+}
+
+function renderOrder() {
+  const items = orderItems();
+  const scroll = state.order.scope === "scroll";
+  $("#order-help").textContent = scroll
+    ? "The home page and the gallery, in this order. Drag a piece to move it, or click its number to type a position. Whatever is first is the opening piece; “{ Keep scrolling }” always stays second. Saving tells you if pieces of one project end up too close together."
+    : "This project's own page, in this order (first piece first). It doesn't change the home page. Pieces you publish later appear at the end until you place them.";
+  $("#order-grid").replaceChildren(...state.order.ids.map((id, index) => (items.get(id) ? orderCard(items.get(id), index) : null)));
+  setOrderDirty(state.order.dirty);
+}
+
+$("#order-scope").addEventListener("change", (event) => {
+  if (state.order.dirty && !confirm("Discard the order you haven't saved?")) {
+    event.target.value = state.order.scope;
+    return;
+  }
+  loadOrder(event.target.value);
+});
+
+$("#order-undo").addEventListener("click", () => loadOrder(state.order.scope));
+
+$("#order-save").addEventListener("click", async () => {
+  const button = $("#order-save");
+  button.disabled = true;
+  $("#order-status").textContent = "Saving…";
+  const scope = state.order.scope;
+  const payload = scope === "scroll"
+    ? { scope: "scroll", ids: state.order.ids }
+    : { scope: "project", project: scope.slice("project:".length), ids: state.order.ids };
+  try {
+    const result = await api("PUT", "/api/order", payload);
+    state.order.dirty = false;
+    const close = result.spacing?.length
+      ? ` ${result.spacing.length} pair${result.spacing.length === 1 ? "" : "s"} of pieces from the same project are under 3 apart: ${result.spacing
+          .slice(0, 6)
+          .map((w) => `${w.a} & ${w.b} (${w.project})`)
+          .join(", ")}${result.spacing.length > 6 ? "…" : ""}.`
+      : "";
+    notify(`Order saved; visitors see it on their next visit.${close} Click “Refresh site for search engines” under Live content when you're done.`, close ? "error" : "ok");
+    await loadContent();
+  } catch (error) {
+    notify(error.message, "error");
+    setOrderDirty(true);
+  }
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (state.order.dirty) event.preventDefault();
+});
+
 // ---------------------------------------------------------------- preview & publish
 
 function absoluteUrl(src) {
@@ -717,6 +944,7 @@ async function loadContent() {
   refreshDatalists();
   renderProjectTexts();
   if (!$("#tab-live").hidden) renderLive();
+  if (!$("#tab-order").hidden && !state.order.dirty) openOrder();
 }
 
 function liveSaveButton(onSave) {
