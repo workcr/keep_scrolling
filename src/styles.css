@@ -544,3 +544,9 @@ nav button.filter-mobile {
     --home-wordmark-bottom: 64px;
   }
 }
+
+/* Home page: the project under the pointer, in the nav after "Filters". */
+.nav-hover-project {
+  white-space: nowrap;
+  pointer-events: none;
+}
