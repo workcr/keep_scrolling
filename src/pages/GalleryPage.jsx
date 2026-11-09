@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData, useLocation } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
 import Seo from "../components/Seo";
+import { useHoverProjectTracking } from "../hoverProject";
 import { SITE } from "../site";
 import { slugifyProjectName } from "../utils";
 
@@ -117,6 +118,7 @@ function GalleryItem({ item, twoCol, eagerVideo }) {
       ref={linkRef}
       to={`/project/${slug}`}
       className={twoCol ? "gallery-grid-item gallery-grid-item--2col" : "gallery-grid-item"}
+      data-project-name={item.project || undefined}
     >
       <MediaCard
         {...item}
@@ -138,6 +140,8 @@ function GalleryItem({ item, twoCol, eagerVideo }) {
 export default function GalleryPage() {
   const { items } = useLoaderData();
   const location = useLocation();
+  // The project under the mouse, shown in the nav bar.
+  useHoverProjectTracking();
   const [filters, setFilters] = useState(readSearchFilters());
   const [visibleItems, setVisibleItems] = useState([]);
   const gridRef = useRef(null);

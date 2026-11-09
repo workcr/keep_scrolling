@@ -29,7 +29,7 @@ describe("NavBar", () => {
     expect(screen.getAllByRole("button", { name: /acme/i })).toHaveLength(2);
   });
 
-  it("shows the hovered project after Filters on the home page only", () => {
+  it("shows the hovered project after Filters on the home and gallery pages only", () => {
     const home = render(
       <MemoryRouter initialEntries={["/"]}>
         <NavBar />
@@ -46,6 +46,14 @@ describe("NavBar", () => {
       </MemoryRouter>
     );
     expect(about.container.querySelector(".nav-hover-project")).toBeNull();
+    about.unmount();
+
+    const gallery = render(
+      <MemoryRouter initialEntries={["/gallery"]}>
+        <NavBar />
+      </MemoryRouter>
+    );
+    expect(gallery.container.querySelector(".nav-hover-project").textContent).toBe("DTMS Branding");
     act(() => setHoverProject(null));
   });
 });
