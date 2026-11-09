@@ -238,6 +238,8 @@ export default function HomeIntro({ text, wordmarkSrc, frameRef, onDone }) {
 
   return (
     <div ref={overlayRef} className="home-intro" aria-hidden="true" style={{ visibility: layout ? "visible" : "hidden" }}>
+      {/* On phones the text is clipped under the header (see .home-intro-clip). */}
+      <div className="home-intro-clip">
       <p
         ref={textRef}
         className="home-intro-text"
@@ -250,10 +252,11 @@ export default function HomeIntro({ text, wordmarkSrc, frameRef, onDone }) {
         {text}
         <span ref={endRef} className="home-intro-baseline" />
       </p>
+      </div>
       {/* Same structure and classes as the page's wordmark (Home.jsx). */}
       <div ref={stageRef} className="home-intro-stage">
         <div ref={markWrapRef} className="home-wordmark" style={{ transform: `translate3d(0, ${markOffset}px, 0)` }}>
-          <img ref={markRef} src={wordmarkSrc} alt="" className="w-11/12" />
+          <img ref={markRef} src={wordmarkSrc} alt="" className="w-11/12" width={SVG_WIDTH} height={245} />
         </div>
       </div>
     </div>

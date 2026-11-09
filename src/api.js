@@ -172,9 +172,10 @@ export async function filtersLoader() {
   return { items };
 }
 
-export async function homeLoader() {
-  const items = await fetchHomeItems();
-  return { items };
+// Not awaited: the home page (and its intro) renders at once, and the list
+// of work arrives while the intro plays. Other pages still wait for theirs.
+export function homeLoader() {
+  return { items: fetchHomeItems() };
 }
 
 export async function projectLoader({ params }) {
