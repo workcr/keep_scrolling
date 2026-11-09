@@ -465,3 +465,44 @@ describe("library", () => {
     expect((await libraryApi("GET", "/api/library")).data.pieces.map((p) => p.key)).toEqual(["CR Glass Logo 360 New"]);
   });
 });
+
+describe("order", () => {
+  const rowsOf = () => {
+    const [headers, ...rows] = sheets.tabs.Sheet1;
+    return rows.map((cells) => Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? ""])));
+  };
+  const scrollIds = () => rowsOf().filter((r) => r.id).map((r) => r.id);
+
+  it("saves the home & gallery order, keeping the text card second", async () => {
+    const ids = scrollIds();
+    const text = rowsOf().find((r) => r["data-media-type"] === "text").id;
+    const others = ids.filter((id) => id !== text).reverse();
+    const order = [others[0], text, ...others.slice(1)];
+    const result = await api("PUT", "/api/order", { json: { scope: "scroll", ids: order } });
+    expect(result.status).toBe(200);
+    expect(Array.isArray(result.data.spacing)).toBe(true);
+    const byId = Object.fromEntries(rowsOf().map((r) => [r.id, r.order]));
+    expect(order.map((id) => byId[id])).toEqual(order.map((_, i) => String((i + 1) * 10)));
+    // Saving the same order again writes nothing.
+    expect((await api("PUT", "/api/order", { json: { scope: "scroll", ids: order } })).data.saved).toBe(0);
+
+    const wrongCard = await api("PUT", "/api/order", { json: { scope: "scroll", ids: [text, ...others] } });
+    expect(wrongCard.status).toBe(422);
+    const stale = await api("PUT", "/api/order", { json: { scope: "scroll", ids: order.slice(1) } });
+    expect(stale.status).toBe(409);
+  });
+
+  it("saves a project page's own order in a project-order column it adds", async () => {
+    const pieces = rowsOf().filter((r) => r["data-project"] === "surf overdose").map((r) => r.id);
+    const reversed = [...pieces].reverse();
+    const result = await api("PUT", "/api/order", { json: { scope: "project", project: "Surf Overdose", ids: reversed } });
+    expect(result.status).toBe(200);
+    expect(sheets.tabs.Sheet1[0].at(-1)).toBe("project-order");
+    const byId = Object.fromEntries(rowsOf().map((r) => [r.id, r]));
+    expect(reversed.map((id) => byId[id]["project-order"])).toEqual(reversed.map((_, i) => String(i + 1)));
+    // The home order is untouched.
+    expect(reversed.every((id) => byId[id].order === "")).toBe(true);
+    expect((await api("PUT", "/api/order", { json: { scope: "project", project: "surf overdose", ids: pieces.slice(1) } })).status).toBe(409);
+    expect((await api("PUT", "/api/order", { json: { scope: "project", project: "nope", ids: [] } })).status).toBe(404);
+  });
+});

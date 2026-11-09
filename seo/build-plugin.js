@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createAltLookup } from "../src/altText.js";
 import { csvToObjects, projectsFromCsv } from "../src/csv.js";
+import { compareForProject } from "../src/order.js";
 import { SITE, projectDescription, projectTitle, titleCase } from "../src/site.js";
 
 const DEFAULT_ITEMS_CSV_URL =
@@ -97,7 +98,8 @@ function field(item, key) {
 
 function groupProjects(items, descriptions, altLookup) {
   const projects = new Map();
-  for (const item of items) {
+  // Same order as the project pages, so the first image (og:image) matches.
+  for (const item of [...items].sort(compareForProject)) {
     const name = field(item, "project");
     const type = field(item, "media-type").toLowerCase() || String(item.mediaType || "").toLowerCase();
     if (!name || type === "text") continue;
