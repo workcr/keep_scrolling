@@ -15,7 +15,9 @@
 .home-stage {
   position: sticky;
   top: 0;
-  height: 100dvh;
+  /* The scroll area's height (the screen minus the nav), so the wordmark at
+     its bottom is fully visible instead of cut off below the fold. */
+  height: 100%;
   overflow: hidden;
   pointer-events: none;
 }
@@ -493,11 +495,26 @@ nav button.filter-mobile {
 }
 
 .home-intro-mark {
+  position: absolute;
+  top: 0;
   display: block;
+  will-change: transform;
 }
 
-.home-scroll-prompt-fade {
-  transition: opacity 0.6s ease-out;
+/* "Scroll ↓↓↓" after the intro: fades in with a small slide up. */
+.home-scroll-prompt-enter > * {
+  animation: home-prompt-in 0.7s ease-out both;
+}
+
+@keyframes home-prompt-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .visually-hidden {

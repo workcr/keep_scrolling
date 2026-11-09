@@ -127,7 +127,7 @@ export default function Home() {
     setIntroActive(false);
     // "Scroll ↓↓↓" fades in once; after that it follows the scroll directly.
     setPromptFadeIn(true);
-    setTimeout(() => setPromptFadeIn(false), 700);
+    setTimeout(() => setPromptFadeIn(false), 800);
   }, []);
   const targetScrollRef = useRef(0);
   const currentScrollRef = useRef(0);
@@ -217,10 +217,10 @@ export default function Home() {
       {/* The introduction, for search engines and screen readers on every visit. */}
       <h1 className="visually-hidden">{SITE.intro}</h1>
       {introActive && (
-        <HomeIntro text={SITE.intro} wordmarkSrc="/assets/keep%20scRolling.svg" pageWordmarkRef={wordmarkRef} onDone={endIntro} />
+        <HomeIntro text={SITE.intro} wordmarkSrc="/assets/keep%20scRolling.svg" pageWordmarkRef={wordmarkRef} frameRef={scrollerRef} onDone={endIntro} />
       )}
       <div className="home-stage">
-        <div className={`home-scroll-prompt${promptFadeIn ? " home-scroll-prompt-fade" : ""}`} style={{ opacity: introActive ? 0 : promptOpacity }}>
+        <div className={`home-scroll-prompt${promptFadeIn ? " home-scroll-prompt-enter" : ""}`} style={{ opacity: introActive ? 0 : promptOpacity }}>
           <div className="text-3xl flex flex-col gap-6">
             Scroll
             <div className="flex flex-col items-center">
