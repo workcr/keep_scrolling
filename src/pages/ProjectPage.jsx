@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useLoaderData, useLocation } from "react-router-dom";
 import MediaCard from "../components/MediaCard";
 import Seo from "../components/Seo";
-import { projectDescription, projectTitle } from "../site";
+import ShareButtons from "../components/ShareButtons";
+import { SITE, projectDescription, projectTitle } from "../site";
 import { slugifyProjectName } from "../utils";
 
 const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
@@ -66,6 +67,14 @@ export default function ProjectPage() {
 
   const firstItem = project.gallery?.[0] || {};
   const projectName = project.project || firstItem.project || "";
+  const pageUrl = `${SITE.url}/project/${slugifyProjectName(projectName)}`;
+  // First still image, for Pinterest (other networks read the page's og:image).
+  const firstImage = (project.gallery || []).find((item) => String(item["data-media-type"] || item.mediaType).toLowerCase() === "image");
+  const shareImage = firstImage?.src
+    ? /^https?:/i.test(firstImage.src)
+      ? firstImage.src
+      : `${SITE.url}/${encodeURI(decodeURI(String(firstImage.src).replace(/^\/+/, "")))}`
+    : undefined;
 
   return (
     <div className="pt-16 project">
@@ -118,10 +127,7 @@ export default function ProjectPage() {
         <div className="space-y-12 col-span-2 lg:col-span-1">
           {/* pre-line keeps line breaks typed in the sheet (e.g. credit lists). */}
           <p style={{ whiteSpace: "pre-line" }}>{project.description}</p>
-          <div className="space-x-4">
-            <button type="button">Link</button>
-            <button type="button">Share</button>
-          </div>
+          <ShareButtons url={pageUrl} title={projectTitle(projectName)} image={shareImage} />
         </div>
       </div>
 

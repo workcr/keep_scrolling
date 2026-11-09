@@ -603,3 +603,35 @@ main:has(.home-scroll-container) {
 .home-scroll-container .home-wordmark {
   bottom: calc(var(--home-wordmark-bottom, 24px) - 66px);
 }
+
+/* Project pages: room below Link / Share, and the share options (same pill
+   look as the buttons, from styles.vendor.css .project button). */
+.project-actions {
+  margin-bottom: 64px;
+}
+
+.project-share-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-share-options a {
+  display: inline-block;
+  padding: calc(var(--spacing, 4px) * 2);
+  border: 1px solid var(--color-black, #000);
+  border-radius: 9999px;
+  font-size: var(--text-xs, 12px);
+  line-height: var(--text-xs--line-height, 1.333);
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.project-share-options a:hover {
+  background-color: var(--color-black, #000);
+  color: var(--color-white, #fff);
+}
