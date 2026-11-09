@@ -1,4 +1,5 @@
 import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { useHoverProject } from "../hoverProject";
 import { titleCase } from "../site";
 
 const closeIcon =
@@ -8,6 +9,9 @@ export default function NavBar() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const isGalleryRoute = location.pathname === "/gallery";
+  // On the home page: the project of the piece under the pointer.
+  const hoverProject = useHoverProject();
+  const showHoverProject = location.pathname === "/" && hoverProject;
   const activeFilter =
     searchParams.get("client") ||
     searchParams.get("project") ||
@@ -36,6 +40,11 @@ export default function NavBar() {
           <>
             <Link to="/gallery">Gallery</Link>
             <Link to="/filters">Filters</Link>
+            {showHoverProject && (
+              <span className="nav-hover-project" aria-hidden="true">
+                {titleCase(hoverProject)}
+              </span>
+            )}
           </>
         )}
 
