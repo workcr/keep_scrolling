@@ -550,3 +550,45 @@ nav button.filter-mobile {
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* Header: sticks to the top on every page, with no background. The text
+   (and the filter button) is white with a difference blend, so it shows
+   black over white and inverts over images and video. */
+nav,
+nav.nav-sticky {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background-color: transparent;
+  color: #ffffff;
+  mix-blend-mode: difference;
+}
+
+nav .filter,
+nav .filter-mobile {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+nav .filter img,
+nav .filter-mobile img {
+  filter: invert(1);
+}
+
+/* The nav is fixed, so the page starts below it (same layout as before). */
+main {
+  height: 100%;
+  padding-top: 66px;
+}
+
+/* An opaque white base for the nav's blend to work against: without one the
+   white text has nothing to invert and disappears on white pages. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: #ffffff;
+}
