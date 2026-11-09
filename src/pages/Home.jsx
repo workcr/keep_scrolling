@@ -106,13 +106,22 @@ function projectNameForItem(item) {
 }
 
 export default function Home() {
-  const { items: loadedItems = [] } = useLoaderData();
-  const sourceItems = useMemo(
-    () => (loadedItems.length ? loadedItems : scrollItems).filter(
-      (item) => String(item.class || "").includes("scroll-item")
-    ),
-    [loadedItems]
-  );
+  // The list of work arrives while the intro plays (homeLoader doesn't wait).
+  const { items: itemsPromise } = useLoaderData();
+  const [loadedItems, setLoadedItems] = useState(null);
+  useEffect(() => {
+    let current = true;
+    Promise.resolve(itemsPromise).then((list) => {
+      if (current) setLoadedItems(list || []);
+    });
+    return () => {
+      current = false;
+    };
+  }, [itemsPromise]);
+  const sourceItems = useMemo(() => {
+    if (!loadedItems) return [];
+    return (loadedItems.length ? loadedItems : scrollItems).filter((item) => String(item.class || "").includes("scroll-item"));
+  }, [loadedItems]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
   const [smoothedScroll, setSmoothedScroll] = useState(0);
@@ -235,7 +244,7 @@ export default function Home() {
         </div>
 
         <div className="home-wordmark">
-          <img src="/assets/keep%20scRolling.svg" alt="Keep scrolling" className="w-11/12" />
+          <img src="/assets/keep%20scRolling.svg" alt="Keep scrolling" className="w-11/12" width="1882" height="245" />
         </div>
 
         {items.map((item) => {
