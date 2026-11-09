@@ -15,9 +15,7 @@
 .home-stage {
   position: sticky;
   top: 0;
-  /* The scroll area's height (the screen minus the nav), so the wordmark at
-     its bottom is fully visible instead of cut off below the fold. */
-  height: 100%;
+  height: 100dvh;
   overflow: hidden;
   pointer-events: none;
 }
@@ -477,27 +475,36 @@ nav button.filter-mobile {
   overscroll-behavior: contain;
 }
 
-.home-intro-block {
+/* Figma: same style as the wordmark (size set in HomeIntro from the
+   wordmark's letter height), 0.9 line height, -3% tracking. */
+.home-intro-text {
+  position: absolute;
+  top: 0;
+  margin: 0;
+  padding: 0;
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+  will-change: transform;
+}
+
+.home-intro-baseline {
+  display: inline-block;
+  width: 0;
+  height: 0;
+}
+
+/* A copy of .home-stage, so the intro's wordmark rests exactly where the
+   page's does. */
+.home-intro-stage {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  will-change: transform;
+  height: 100dvh;
+  pointer-events: none;
 }
 
-.home-intro-text {
-  margin: 0;
-  padding: 0 0.04em;
-  font-size: clamp(44px, 13vw, 300px);
-  line-height: 1.04;
-  letter-spacing: -0.035em;
-  will-change: transform;
-}
-
-.home-intro-mark {
-  position: absolute;
-  top: 0;
-  display: block;
+.home-intro-stage .home-wordmark {
   will-change: transform;
 }
 

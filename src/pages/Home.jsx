@@ -120,7 +120,6 @@ export default function Home() {
     height: typeof window !== "undefined" ? window.innerHeight : 0
   }));
   const scrollerRef = useRef(null);
-  const wordmarkRef = useRef(null);
   const [introActive, setIntroActive] = useState(() => typeof window !== "undefined" && !introAlreadySeen());
   const [promptFadeIn, setPromptFadeIn] = useState(false);
   const endIntro = useCallback(() => {
@@ -217,7 +216,7 @@ export default function Home() {
       {/* The introduction, for search engines and screen readers on every visit. */}
       <h1 className="visually-hidden">{SITE.intro}</h1>
       {introActive && (
-        <HomeIntro text={SITE.intro} wordmarkSrc="/assets/keep%20scRolling.svg" pageWordmarkRef={wordmarkRef} frameRef={scrollerRef} onDone={endIntro} />
+        <HomeIntro text={SITE.intro} wordmarkSrc="/assets/keep%20scRolling.svg" frameRef={scrollerRef} onDone={endIntro} />
       )}
       <div className="home-stage">
         <div className={`home-scroll-prompt${promptFadeIn ? " home-scroll-prompt-enter" : ""}`} style={{ opacity: introActive ? 0 : promptOpacity }}>
@@ -232,7 +231,7 @@ export default function Home() {
         </div>
 
         <div className="home-wordmark">
-          <img ref={wordmarkRef} src="/assets/keep%20scRolling.svg" alt="Keep scrolling" className="w-11/12" />
+          <img src="/assets/keep%20scRolling.svg" alt="Keep scrolling" className="w-11/12" />
         </div>
 
         {items.map((item) => {
