@@ -6,6 +6,7 @@ describe("titleCase", () => {
     expect(titleCase("dtms branding")).toBe("DTMS Branding");
     expect(titleCase("the new golden era")).toBe("The New Golden Era");
     expect(titleCase("2014 world cup")).toBe("2014 World Cup");
+    expect(["att", "cce", "ow posters", "ooh", "3d animation", "guarana", "cr", "hs posters", "wksp branding", "why not shrimp"].map(titleCase)).toEqual(["AT&T", "CCE", "OW Posters", "OOH", "3D Animation", "Guaraná", "CR", "HS Posters", "WKSP Branding", "Why Not Shrimp"]);
   });
 });
 

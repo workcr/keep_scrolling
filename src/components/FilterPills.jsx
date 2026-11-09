@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { titleCase } from "../site";
 import { slugifyProjectName } from "../utils";
 
 export default function FilterPills({ items }) {
@@ -9,7 +10,7 @@ export default function FilterPills({ items }) {
       <ul>
         {projectNames.map((name) => (
           <li key={name}>
-            <Link to={`/project/${slugifyProjectName(name)}`}>{name}</Link>
+            <Link to={`/project/${slugifyProjectName(name)}`}>{titleCase(name)}</Link>
           </li>
         ))}
       </ul>

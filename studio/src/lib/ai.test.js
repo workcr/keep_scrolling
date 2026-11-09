@@ -96,15 +96,21 @@ describe("writeDescription", () => {
     const result = await writeDescription(client, {
       project: "dtms branding",
       answers: { role: "Creative Director", year: "2024", credits: "Designer: Cacá Barabás." },
-      alts: ["DTMS poster reading “Bottle of Soda”."],
-      styleExample: "Surf Overdose was the first apparel collection…"
+      alts: ["DTMS poster reading “Bottle of Soda”."]
     });
     expect(result).toMatchObject({ description: "DTMS is a film production company…", missing: ["result"] });
     const prompt = client.calls[0].messages[0].content[0].text;
     expect(prompt).toMatch(/Your role: Creative Director/);
-    expect(prompt).toMatch(/Result or recognition: \(not provided\)/);
+    expect(prompt).toMatch(/What happened after launch \(optional\): \(not provided\)/);
+    // All five agreed descriptions are the style examples.
+    expect(prompt).toMatch(/--- Example 5 ---/);
     expect(prompt).toMatch(/Surf Overdose was the first apparel collection/);
-    expect(client.calls[0].system).toMatch(/Never invent a role, client, year, credit/);
+    expect(prompt).toMatch(/I designed the visual identity for Don’t Touch My Soda/);
+    const system = client.calls[0].system;
+    expect(system).toMatch(/Never invent a role, client, agency, year, credit/);
+    expect(system).toMatch(/First person: "I" for Rodrigo's own part, "we" for the team/);
+    expect(system).toMatch(/keep the name of a client, company, brand or partnership separate from the work/);
+    expect(system).toMatch(/Never brag/);
     expect(client.calls[0].output_config.effort).toBe("high");
   });
 });

@@ -1,8 +1,11 @@
 import localScrollItems from "./data/scroll-items.json";
+import { compareForProject, sortKey } from "./order.js";
 import videoAltText from "./data/video-alt-text.json";
 import { createAltLookup } from "./altText";
 import { csvToObjects, projectsFromCsv } from "./csv";
 import { titleCase } from "./site";
+import { previousNames, slugifyProjectName } from "./utils";
+import { redirect } from "react-router-dom";
 
 const DEFAULT_ITEMS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/export?format=csv&gid=0";
@@ -63,23 +66,8 @@ function normalizeItem(item) {
   };
 }
 
-function itemSequence(item) {
-  const match = String(item.id || "").match(/(?:^|-)item-(\d+)$/i);
-  if (match) return Number.parseInt(match[1], 10);
-
-  const numeric = Number.parseInt(item.id, 10);
-  return Number.isFinite(numeric) ? numeric : Number.MAX_SAFE_INTEGER;
-}
-
-// Display order. Rows may carry an `order` number (written by the Studio so
-// new work is slotted between existing pieces); rows without one keep their
-// historical position, id number × 10. With no `order` column at all, this is
-// exactly the old id order. Must match studio/src/lib/sequence.js#sortKey.
-export function sortKey(item) {
-  const order = Number.parseFloat(item.order);
-  if (Number.isFinite(order)) return order;
-  return itemSequence(item) * 10;
-}
+// Display order lives in src/order.js (shared with the SEO build).
+export { sortKey };
 
 function sortItemsBySequence(items) {
   return [...items].sort((a, b) => sortKey(a) - sortKey(b));
@@ -192,19 +180,22 @@ export async function homeLoader() {
 export async function projectLoader({ params }) {
   const id = params.id;
   const [projects, items] = await Promise.all([fetchProjects(), fetchItems()]);
-  const lookup = id.replace(/-/g, " ").toLowerCase();
-  const project = projects.find((entry) => String(entry.project || "").toLowerCase() === lookup);
-  const projectName =
-    project?.project ||
-    items.find((item) => String(item.project || "").toLowerCase() === lookup)?.project ||
-    lookup;
+  const slug = slugifyProjectName(id);
+  const project = projects.find((entry) => slugifyProjectName(entry.project) === slug);
+  const projectName = project?.project || items.find((item) => slugifyProjectName(item.project) === slug)?.project;
+
+  if (!projectName) {
+    // A renamed project: send old links to its new address.
+    const renamed = projects.find((entry) => previousNames(entry).some((name) => slugifyProjectName(name) === slug));
+    if (renamed) throw redirect(`/project/${slugifyProjectName(renamed.project)}`);
+    throw new Response("Not Found", { status: 404 });
+  }
 
   const result = {
     ...(project || {}),
-    gallery: items.filter(
-      (item) =>
-        String(item.project || "").toLowerCase() === String(projectName || "").toLowerCase()
-    )
+    gallery: items
+      .filter((item) => String(item.project || "").toLowerCase() === String(projectName || "").toLowerCase())
+      .sort(compareForProject)
   };
 
   if (!result.gallery.length) {

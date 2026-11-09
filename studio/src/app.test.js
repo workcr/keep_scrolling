@@ -295,3 +295,259 @@ describe("AI drafts", () => {
     expect(saved.questions.map((q) => q.key)).toEqual(["role", "year", "agency", "idea", "result", "credits"]);
   });
 });
+
+describe("setup status", () => {
+  it("lists missing connections without revealing any value", async () => {
+    delete env.GITHUB_TOKEN;
+    const ready = await api("GET", "/api/status");
+    expect(ready.data).toEqual({
+      ready: false,
+      missing: [{ secret: "GITHUB_TOKEN", needed: "refreshing the site for search engines after Publish" }]
+    });
+    env.GITHUB_TOKEN = "gh";
+    expect((await api("GET", "/api/status")).data).toEqual({ ready: true, missing: [] });
+  });
+});
+
+describe("filling missing descriptions", () => {
+  it("writes the prepared alt texts into rows that still have placeholders, and keeps typed text", async () => {
+    const altColumn = HEADERS.indexOf("alt");
+    const row = (id) => sheets.tabs.Sheet1.find((cells) => cells[0] === id);
+    row("scroll-item-10")[altColumn] = "This image needs a description.";
+    row("scroll-item-31")[altColumn] = "This video needs a description.";
+    row("scroll-item-12")[altColumn] = "My own words.";
+    const result = await api("POST", "/api/items/fill-alts");
+    expect(result.status).toBe(200);
+    expect(row("scroll-item-10")[altColumn]).toMatch(/DTMS identity cover/);
+    expect(row("scroll-item-31")[altColumn]).toMatch(/Connecting Changes Everything/);
+    expect(row("scroll-item-12")[altColumn]).toBe("My own words.");
+    expect(result.data.filled).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("site refresh", () => {
+  it("starts the website deploy, or explains why it couldn't", async () => {
+    const ok = await api("POST", "/api/deploy");
+    expect(ok.data).toEqual({ started: true });
+    expect(deployCalls).toHaveLength(1);
+    delete env.GITHUB_TOKEN;
+    const failed = await api("POST", "/api/deploy");
+    expect(failed.status).toBe(502);
+    expect(failed.data.error).toMatch(/GITHUB_TOKEN is not set/);
+  });
+});
+
+describe("rows without an id", () => {
+  it("are ignored everywhere and reported", async () => {
+    const blankRow = HEADERS.map(() => "");
+    const withOrder = HEADERS.map((h) => (h === "data-media-type" ? "image" : ""));
+    sheets.tabs.Sheet1.push(blankRow, withOrder);
+    const content = await api("GET", "/api/content");
+    expect(content.data.items.every((item) => item.id)).toBe(true);
+    expect(content.data.ignoredRows).toEqual([
+      { row: sheets.tabs.Sheet1.length - 1, filled: [] },
+      { row: sheets.tabs.Sheet1.length, filled: ["data-media-type"] }
+    ]);
+    const filled = await api("POST", "/api/items/fill-alts");
+    expect(filled.data.remaining.every(Boolean)).toBe(true);
+    const id = await imageDraft("a.png", "Brand New");
+    const preview = await api("POST", "/api/publish", { json: { draftIds: [id], dryRun: true } });
+    expect(preview.data.sequence.every(Boolean)).toBe(true);
+  });
+});
+
+describe("re-space", () => {
+  it("previews, then writes only the moved pieces' order and refreshes the site", async () => {
+    const orderColumn = HEADERS.indexOf("order");
+    const projectColumn = HEADERS.indexOf("data-project");
+    // Two Surf Overdose pieces sitting right after "{ Keep scrolling }", next to the opener.
+    for (const [id, order] of [["scroll-item-58", "22"], ["scroll-item-59", "27"]]) {
+      const row = HEADERS.map(() => "");
+      row[0] = id;
+      row[HEADERS.indexOf("data-media-type")] = "image";
+      row[projectColumn] = "surf overdose";
+      row[orderColumn] = order;
+      sheets.tabs.Sheet1.push(row);
+    }
+    const before = JSON.stringify(sheets.tabs.Sheet1);
+    const preview = await api("POST", "/api/respace", { json: { dryRun: true } });
+    expect(preview.data.moves.length).toBeGreaterThan(0);
+    expect(preview.data.remaining).toBe(0);
+    expect(JSON.stringify(sheets.tabs.Sheet1)).toBe(before);
+
+    const applied = await api("POST", "/api/respace", { json: {} });
+    expect(applied.data.deploy).toEqual({ ok: true });
+    const changed = sheets.calls.filter((c) => c.type === "update").flatMap((c) => c.cells);
+    expect(changed.every((cell) => cell.column === orderColumn)).toBe(true);
+    expect(changed).toHaveLength(applied.data.moves.length);
+    expect((await api("GET", "/api/content")).data.spacing).toEqual([]);
+  });
+});
+
+describe("deleting", () => {
+  it("deletes a piece's row, but never a text card", async () => {
+    const count = sheets.tabs.Sheet1.length;
+    expect((await api("DELETE", "/api/items/scroll-item-31")).data).toEqual({ deleted: "scroll-item-31" });
+    expect(sheets.tabs.Sheet1).toHaveLength(count - 1);
+    expect(sheets.tabs.Sheet1.some((cells) => cells[0] === "scroll-item-31")).toBe(false);
+    expect((await api("DELETE", "/api/items/scroll-item-2")).status).toBe(409);
+    expect((await api("DELETE", "/api/items/nope")).status).toBe(404);
+  });
+
+  it("refuses to delete a project that pieces still use, and deletes an empty one", async () => {
+    sheets.tabs.projects.push(["at&t jason preston", "Duplicate project."]);
+    const used = await api("DELETE", "/api/projects/surf%20overdose");
+    expect(used.status).toBe(409);
+    expect(used.data.error).toMatch(/still used by scroll-item-1/);
+    await api("PUT", "/api/project-drafts/at%26t%20jason%20preston", { json: { project: "at&t jason preston", description: "x" } });
+    const done = await api("DELETE", "/api/projects/at%26t%20jason%20preston");
+    expect(done.data).toEqual({ deleted: "at&t jason preston", rows: 1 });
+    expect(sheets.tabs.projects.some((cells) => cells[0] === "at&t jason preston")).toBe(false);
+    expect((await api("GET", "/api/project-drafts")).data.projects).toEqual([]);
+  });
+});
+
+describe("library", () => {
+  const pieces = [
+    { key: "SJC_Scene-03-Closer0001 1-5", kind: "image", src: "assets/SJC_Scene-03-Closer0001 1-5.webp", variants: { 320: "assets/SJC_Scene-03-Closer0001 1-5-320.webp" }, width: 2560, height: 1440, project: "surf overdose" },
+    { key: "EQ_New Cap", kind: "image", src: "assets/EQ_New Cap.webp", variants: { 960: "assets/EQ_New Cap-960.webp" }, width: 1200, height: 1500, project: "ocideia" },
+    { key: "DTMS_post_01", kind: "video", src: "assets/DTMS_post_01.mp4", variants: {}, width: 1080, height: 1080, project: "dtms branding" },
+    { key: "CR Glass Logo 360 New", kind: "video", src: "assets/CR Glass Logo 360 New.mp4", variants: {}, width: 1080, height: 1080, project: "cr branding", alreadyOnSite: "cr-logo-animation.mp4" }
+  ];
+  const libraryApi = async (method, path, options) => {
+    const init = { method, headers: {} };
+    if (options?.json) {
+      init.body = JSON.stringify(options.json);
+      init.headers["Content-Type"] = "application/json";
+    }
+    const response = await handle(new Request(`${BASE}${path}`, init), env, { ...deps(), library: pieces });
+    return { status: response.status, data: await response.json() };
+  };
+
+  it("lists only what isn't on the site, matching sizes and URL-encoded names", async () => {
+    const values = { id: "scroll-item-900", "data-media-type": "image", src: "", srcset: "assets/EQ_New%20Cap-320.webp 320w" };
+    sheets.tabs.Sheet1.push(HEADERS.map((h) => values[h] ?? ""));
+    const { data } = await libraryApi("GET", "/api/library");
+    const keys = data.pieces.map((p) => p.key);
+    expect(keys).not.toContain("SJC_Scene-03-Closer0001 1-5"); // in the sample sheet
+    expect(keys).not.toContain("EQ_New Cap"); // live under a different size
+    expect(keys).toEqual(["DTMS_post_01", "CR Glass Logo 360 New"]);
+    expect(data.pieces[1].alreadyOnSite).toBe("cr-logo-animation.mp4");
+  });
+
+  it("turns pieces into drafts once, and publishes them without uploads", async () => {
+    const added = await libraryApi("POST", "/api/library/add", { json: { keys: ["EQ_New Cap", "DTMS_post_01"] } });
+    expect(added.data).toEqual({ added: 2, skipped: 0 });
+    expect((await libraryApi("POST", "/api/library/add", { json: { keys: ["EQ_New Cap"] } })).data).toEqual({ added: 0, skipped: 1 });
+    expect((await libraryApi("POST", "/api/library/add", { json: { keys: ["nope"] } })).status).toBe(404);
+    expect((await libraryApi("GET", "/api/library")).data.pieces.find((p) => p.key === "EQ_New Cap").inDrafts).toBe(true);
+
+    const { drafts } = (await api("GET", "/api/drafts")).data;
+    const image = drafts.find((d) => d.library_key === "EQ_New Cap");
+    expect(image).toMatchObject({ kind: "image", project: "ocideia", src: "assets/EQ_New Cap.webp", width: 1200, height: 1500 });
+
+    // The AI sees full, encoded URLs on the website; library videos have no frames to show it.
+    aiReply = { project: "ocideia", project_is_new: false, project_reason: "", client: "", category: "", discipline: "", alt: "A cap.", confidence: "high" };
+    expect((await api("POST", `/api/drafts/${image.id}/ai`)).status).toBe(200);
+    expect(aiCalls[0].messages[0].content[0].source.url).toBe("https://keep-scrolling.com/assets/EQ_New%20Cap-960.webp");
+    const video = drafts.find((d) => d.library_key === "DTMS_post_01");
+    const refused = await api("POST", `/api/drafts/${video.id}/ai`);
+    expect(refused.status).toBe(422);
+    expect(refused.data.error).toMatch(/by hand/);
+
+    await api("PATCH", `/api/drafts/${video.id}`, { json: { alt: "Animated poster." } });
+    const result = await api("POST", "/api/publish", { json: { draftIds: [image.id, video.id], openerDraftId: null } });
+    expect(result.status).toBe(200);
+    const appended = sheets.tabs.Sheet1.slice(-2).map((cells) => Object.fromEntries(HEADERS.map((h, i) => [h, cells[i]])));
+    expect(appended.map((row) => row.src)).toEqual(["assets/EQ_New Cap.webp", "assets/DTMS_post_01.mp4"]);
+    expect(appended[0].srcset).toBe("assets/EQ_New Cap-960.webp 960w");
+    expect(appended[1]["data-media-type"]).toBe("video");
+    expect((await libraryApi("GET", "/api/library")).data.pieces.map((p) => p.key)).toEqual(["CR Glass Logo 360 New"]);
+  });
+});
+
+describe("order", () => {
+  const rowsOf = () => {
+    const [headers, ...rows] = sheets.tabs.Sheet1;
+    return rows.map((cells) => Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? ""])));
+  };
+  const scrollIds = () => rowsOf().filter((r) => r.id).map((r) => r.id);
+
+  it("saves the home & gallery order, keeping the text card second", async () => {
+    const ids = scrollIds();
+    const text = rowsOf().find((r) => r["data-media-type"] === "text").id;
+    const others = ids.filter((id) => id !== text).reverse();
+    const order = [others[0], text, ...others.slice(1)];
+    const result = await api("PUT", "/api/order", { json: { scope: "scroll", ids: order } });
+    expect(result.status).toBe(200);
+    expect(Array.isArray(result.data.spacing)).toBe(true);
+    const byId = Object.fromEntries(rowsOf().map((r) => [r.id, r.order]));
+    expect(order.map((id) => byId[id])).toEqual(order.map((_, i) => String((i + 1) * 10)));
+    // Saving the same order again writes nothing.
+    expect((await api("PUT", "/api/order", { json: { scope: "scroll", ids: order } })).data.saved).toBe(0);
+
+    const wrongCard = await api("PUT", "/api/order", { json: { scope: "scroll", ids: [text, ...others] } });
+    expect(wrongCard.status).toBe(422);
+    const stale = await api("PUT", "/api/order", { json: { scope: "scroll", ids: order.slice(1) } });
+    expect(stale.status).toBe(409);
+  });
+
+  it("saves a project page's own order in a project-order column it adds", async () => {
+    const pieces = rowsOf().filter((r) => r["data-project"] === "surf overdose").map((r) => r.id);
+    const reversed = [...pieces].reverse();
+    const result = await api("PUT", "/api/order", { json: { scope: "project", project: "Surf Overdose", ids: reversed } });
+    expect(result.status).toBe(200);
+    expect(sheets.tabs.Sheet1[0].at(-1)).toBe("project-order");
+    const byId = Object.fromEntries(rowsOf().map((r) => [r.id, r]));
+    expect(reversed.map((id) => byId[id]["project-order"])).toEqual(reversed.map((_, i) => String(i + 1)));
+    // The home order is untouched.
+    expect(reversed.every((id) => byId[id].order === "")).toBe(true);
+    expect((await api("PUT", "/api/order", { json: { scope: "project", project: "surf overdose", ids: pieces.slice(1) } })).status).toBe(409);
+    expect((await api("PUT", "/api/order", { json: { scope: "project", project: "nope", ids: [] } })).status).toBe(404);
+  });
+});
+
+describe("rename project", () => {
+  const rowsOf = (tab) => {
+    const [headers, ...rows] = sheets.tabs[tab];
+    return rows.map((cells) => Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? ""])));
+  };
+
+  it("renames every piece, the description row, drafts and saved texts, and remembers the old name", async () => {
+    const before = rowsOf("Sheet1").filter((r) => r["data-project"] === "surf overdose").length;
+    const draft = await imageDraft("cap.png", "Surf Overdose");
+    await api("PUT", "/api/project-drafts/surf%20overdose", { json: { project: "surf overdose", description: "Saved text." } });
+
+    const result = await api("POST", "/api/projects/surf%20overdose/rename", { json: { to: "surf junkie club overdose" } });
+    expect(result.status).toBe(200);
+    expect(result.data.pieces).toBe(before);
+    expect(rowsOf("Sheet1").filter((r) => r["data-project"] === "surf overdose")).toEqual([]);
+    expect(rowsOf("Sheet1").filter((r) => r["data-project"] === "surf junkie club overdose").length).toBe(before);
+    expect(rowsOf("projects")).toEqual([
+      { project: "surf junkie club overdose", description: expect.stringContaining("Surf Overdose"), "previous-names": "surf overdose" }
+    ]);
+    const { drafts } = (await api("GET", "/api/drafts")).data;
+    expect(drafts.find((d) => d.id === draft).project).toBe("surf junkie club overdose");
+    const { projects } = (await api("GET", "/api/project-drafts")).data;
+    expect(projects.map((p) => [p.name, p.description])).toEqual([["surf junkie club overdose", "Saved text."]]);
+    expect(deployCalls.some((url) => url.includes("/dispatches"))).toBe(true);
+
+    // Renaming again keeps the whole history, so every old link still works.
+    await api("POST", "/api/projects/surf%20junkie%20club%20overdose/rename", { json: { to: "sjc" } });
+    expect(rowsOf("projects")[0]["previous-names"]).toBe("surf overdose, surf junkie club overdose");
+  });
+
+  it("adds a projects row for a project that had none, and refuses names in use", async () => {
+    const result = await api("POST", "/api/projects/fastest%20ever/rename", { json: { to: "nike fastest ever" } });
+    expect(result.status).toBe(200);
+    expect(rowsOf("projects").at(-1)).toEqual({ project: "nike fastest ever", description: "", "previous-names": "fastest ever" });
+    expect((await api("POST", "/api/projects/cce/rename", { json: { to: "Surf Overdose" } })).status).toBe(409);
+    expect((await api("POST", "/api/projects/nope/rename", { json: { to: "x" } })).status).toBe(404);
+    expect((await api("POST", "/api/projects/cce/rename", { json: { to: "a, b" } })).status).toBe(400);
+  });
+
+  it("lists projects that only exist on pieces, so they can be renamed too", async () => {
+    const { projects } = (await api("GET", "/api/content")).data;
+    expect(projects.find((p) => p.project === "cce")).toMatchObject({ notInTab: true });
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import scrollItems from "../../../src/data/scroll-items.json";
-import { FRONT_SLOTS, MIN_GAP, planSequence, sortKey, spacingWarnings } from "./sequence.js";
+import { FRONT_SLOTS, MIN_GAP, planRespace, planSequence, sortKey, spacingWarnings } from "./sequence.js";
 
 // The real catalogue, shaped like rows read from the sheet.
 const existing = scrollItems.map((item) => ({
@@ -127,5 +127,65 @@ describe("refreshing the opener", () => {
   it("gives other new projects a piece right after '{ Keep scrolling }'", () => {
     const mixed = planSequence(existing, [...incoming, { id: "other-0", project: "Other" }], { openerId: "new-0" });
     expect(mixed.sequence[2]).toBe("other-0");
+  });
+});
+
+describe("more pieces for an existing project", () => {
+  it("are not pulled to the front next to that project's pieces", () => {
+    const more = [1, 2, 3].map((n) => ({ id: `sjc-${n}`, project: "surf overdose" }));
+    const plan = planSequence(existing, more); // keeps the Surf Overdose opener
+    const sjc = plan.sequence
+      .map((id, index) => ({ id, index }))
+      .filter(({ id }) => id.startsWith("sjc-") || existing.find((e) => e.id === id)?.project === "surf overdose");
+    for (const a of sjc.filter(({ id }) => id.startsWith("sjc-"))) {
+      for (const b of sjc) {
+        if (a.id !== b.id) expect(cyclic(a.index, b.index, plan.sequence.length)).toBeGreaterThanOrEqual(4);
+      }
+    }
+  });
+
+  it("still puts a NEW project's first piece up front", () => {
+    const plan = planSequence(existing, [{ id: "fresh-1", project: "Fresh" }]);
+    expect(plan.sequence.indexOf("fresh-1")).toBe(2);
+  });
+});
+
+describe("planRespace", () => {
+  // Today's catalogue plus two Surf Overdose pieces published too close to the opener.
+  const crowded = [
+    ...existing,
+    { id: "scroll-item-58", project: "surf overdose", order: "22" },
+    { id: "scroll-item-59", project: "surf overdose", order: "27" }
+  ];
+  const plan = planRespace(crowded);
+
+  it("moves only pieces that sit too close, and leaves no close pairs", () => {
+    expect(spacingWarnings(crowded, 3).length).toBeGreaterThan(0);
+    expect(plan.remaining).toBe(0);
+    const movedIds = plan.moves.map((m) => m.id);
+    expect(movedIds.length).toBeLessThanOrEqual(spacingWarnings(crowded, 3).length);
+    // Everything that didn't move keeps its relative order.
+    const before = [...crowded].sort((a, b) => sortKey(a) - sortKey(b)).map((i) => i.id).filter((id) => !movedIds.includes(id));
+    expect(plan.sequence.filter((id) => !movedIds.includes(id))).toEqual(before);
+  });
+
+  it("never moves the opening or '{ Keep scrolling }'", () => {
+    expect(plan.sequence.slice(0, 2)).toEqual(["scroll-item-1", "scroll-item-2"]);
+    expect(plan.moves.map((m) => m.id)).not.toContain("scroll-item-1");
+  });
+
+  it("gives keys the website sorts into exactly the planned sequence", () => {
+    const merged = crowded
+      .map((item) => {
+        const move = plan.moves.find((m) => m.id === item.id);
+        return move ? { ...item, order: String(move.order) } : item;
+      })
+      .sort((a, b) => sortKey(a) - sortKey(b));
+    expect(merged.map((i) => i.id)).toEqual(plan.sequence);
+  });
+
+  it("does nothing when nothing is too close", () => {
+    const calm = planRespace(plan.sequence.map((id, n) => ({ ...crowded.find((c) => c.id === id), order: String((n + 1) * 10) })));
+    expect(calm.moves).toEqual([]);
   });
 });

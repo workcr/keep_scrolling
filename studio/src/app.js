@@ -1,6 +1,7 @@
 // Studio API. Every route requires the signed-in owner (Cloudflare Access).
 //
 //   GET    /api/me                         who is signed in
+//   GET    /api/status                     which connections are set up (yes/no only)
 //   GET    /api/drafts                     drafts not yet published
 //   POST   /api/drafts                     start a draft for one file -> upload slots
 //   PUT    /api/drafts/:id/files/:slot     stream one file (original, w320.., poster, frame0..5) into R2
@@ -12,19 +13,35 @@
 //   POST   /api/project-drafts/:name/write AI writes the description from your answers
 //   GET    /api/content                    what's live: Sheet1 + projects tab + spacing warnings
 //   PATCH  /api/items/:id                  edit a live item's text in Sheet1
+//   POST   /api/items/fill-alts            write the prepared alt texts into rows that still have placeholders
+//   POST   /api/deploy                     refresh the website's search-engine pages (after live edits)
+//   POST   /api/respace                    { dryRun } move only pieces that sit too close to their project
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
+//   DELETE /api/items/:id                  remove a piece's row from Sheet1 (its files stay in R2)
+//   POST   /api/projects/:name/rename      { to } rename a project everywhere; its old address redirects to the new one
+//   DELETE /api/projects/:name             remove a project's row from the projects tab (refused while pieces use it)
+//   GET    /api/library                    pieces in src/assets that aren't on the site yet
+//   POST   /api/library/add                { keys } -> drafts for those pieces (no upload needed)
+//   PUT    /api/order                      { scope: "scroll", ids } or { scope: "project", project, ids }
+//                                          -> save a dragged order (home & gallery, or one project page)
 //   POST   /api/publish                    { draftIds, openerDraftId?, dryRun } -> preview or publish
 //                                          openerDraftId: piece to open the site with
 //                                          (default: the first draft; null keeps the current opener)
 
-import { authenticate } from "./lib/access.js";
+import { checkAccess, refusalMessage } from "./lib/access.js";
 import { AiError, QUESTIONS, buildCatalog, createClient, draftMedia, writeDescription } from "./lib/ai.js";
+import { PLACEHOLDER_ALT, createAltLookup } from "../../src/altText.js";
+import localItems from "../../src/data/scroll-items.json";
+import library from "./generated/library.json";
+import videoAltText from "../../src/data/video-alt-text.json";
 import { triggerSiteDeploy } from "./lib/github.js";
 import { chooseWide, missingHeaders, nextItemNumber, rowValues, toRow } from "./lib/rows.js";
-import { planSequence, spacingWarnings } from "./lib/sequence.js";
+import { planRespace, planSequence, spacingWarnings } from "./lib/sequence.js";
 import { createSheetsClient } from "./lib/sheets.js";
 
 const MB = 1024 * 1024;
+// Library pieces are served by the website itself, under /assets/.
+const SITE_BASE = "https://keep-scrolling.com/";
 
 // What may be uploaded into each slot.
 const SLOTS = {
@@ -197,7 +214,7 @@ async function deleteDraft(env, id) {
 }
 
 async function listDrafts(env) {
-  const { results } = await env.DB.prepare("SELECT * FROM drafts WHERE status = 'draft' ORDER BY created_at").all();
+  const { results } = await env.DB.prepare("SELECT * FROM drafts WHERE status = 'draft' ORDER BY created_at, rowid").all();
   return json({ drafts: results.map(parseDraft) });
 }
 
@@ -223,21 +240,39 @@ async function liveCatalog(env, deps) {
   try {
     const sheets = sheetsFor(env, deps);
     const { itemsTab, projectsTab } = config(env);
-    const [items, projects] = await Promise.all([sheets.readTab(itemsTab), sheets.readTab(projectsTab).catch(() => ({ rows: [] }))]);
+    const [items, projects] = await Promise.all([readItemsTab(sheets, itemsTab), sheets.readTab(projectsTab).catch(() => ({ rows: [] }))]);
     return buildCatalog(items.rows, projects.rows);
   } catch {
     return buildCatalog([], []);
   }
 }
 
+// Library drafts point at "assets/…" on the website; the AI needs full URLs.
+export function siteUrl(src) {
+  if (!src || /^https?:/i.test(src)) return src;
+  return SITE_BASE + String(src).replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
+}
+
+function forAi(draft) {
+  if (!draft.library_key) return draft;
+  return {
+    ...draft,
+    src: siteUrl(draft.src),
+    variants: Object.fromEntries(Object.entries(draft.variants).map(([width, url]) => [width, siteUrl(url)]))
+  };
+}
+
 async function aiDraft(env, deps, id) {
   const draft = await getDraft(env, id);
   if (draft.status !== "draft") throw new HttpError(409, "This draft is already published.");
+  if (draft.library_key && draft.kind === "video") {
+    throw new HttpError(422, "The AI can only look at still frames, and videos from the Library don't have any. Fill this one in by hand.");
+  }
   const client = aiFor(env, deps);
   const catalog = await liveCatalog(env, deps);
   let suggestion;
   try {
-    ({ suggestion } = await draftMedia(client, draft, catalog));
+    ({ suggestion } = await draftMedia(client, forAi(draft), catalog));
   } catch (error) {
     if (error instanceof AiError) throw new HttpError(502, error.message);
     throw error;
@@ -267,12 +302,10 @@ async function aiWriteDescription(request, env, deps, name) {
   const catalog = await liveCatalog(env, deps);
   const live = catalog.projects.find((p) => p.project.toLowerCase() === key);
   const alts = [...results.map((row) => row.alt).filter(Boolean), ...(live?.alts || [])];
-  // Your own best description is the style reference (Surf Overdose by default).
-  const styleExample = catalog.descriptions.get("surf overdose") || undefined;
 
   let written;
   try {
-    written = await writeDescription(client, { project, answers, alts, styleExample });
+    written = await writeDescription(client, { project, answers, alts });
   } catch (error) {
     if (error instanceof AiError) throw new HttpError(502, error.message);
     throw error;
@@ -303,6 +336,20 @@ async function saveProjectDraft(request, env, name) {
 
 // ---- live content ---------------------------------------------------------
 
+// Rows without an id aren't pieces (blank rows, leftovers of a table's
+// formatting). Every route ignores them; Live content reports them so they
+// can be cleaned up in the sheet.
+async function readItemsTab(sheets, itemsTab) {
+  const tab = await sheets.readTab(itemsTab);
+  const rows = [];
+  const ignored = [];
+  for (const row of tab.rows) {
+    if (String(row.id || "").trim()) rows.push(row);
+    else ignored.push({ row: row._row, filled: tab.headers.filter((h) => String(row[h] ?? "").trim()) });
+  }
+  return { ...tab, rows, ignored };
+}
+
 function existingItems(tab) {
   return tab.rows.map((row) => ({
     id: row.id,
@@ -315,21 +362,194 @@ function existingItems(tab) {
 async function readContent(env, deps) {
   const sheets = sheetsFor(env, deps);
   const { itemsTab, projectsTab } = config(env);
-  const [items, projects] = await Promise.all([sheets.readTab(itemsTab), sheets.readTab(projectsTab).catch(() => null)]);
+  const [items, projects] = await Promise.all([readItemsTab(sheets, itemsTab), sheets.readTab(projectsTab).catch(() => null)]);
   return json({
     items: items.rows,
     headers: items.headers,
     missingColumns: missingHeaders(items.headers),
-    projects: projects ? projects.rows : [],
-    spacing: spacingWarnings(existingItems(items))
+    projects: withItemOnlyProjects(projects ? projects.rows : [], items.rows),
+    ignoredRows: items.ignored,
+    // Only pieces really close together (under 3 apart); publishing aims for 6+.
+    spacing: spacingWarnings(existingItems(items), 3)
   });
+}
+
+// Projects used by pieces but missing from the projects tab still need to be
+// listed (to rename them, or give them a description).
+function withItemOnlyProjects(projectRows, itemRows) {
+  const known = new Set(projectRows.map((row) => String(row.project || "").trim().toLowerCase()));
+  const extra = new Map();
+  for (const row of itemRows) {
+    const name = String(row["data-project"] || "").trim();
+    if (name && !known.has(name.toLowerCase()) && !extra.has(name.toLowerCase())) extra.set(name.toLowerCase(), { project: name, description: "", notInTab: true });
+  }
+  return [...projectRows, ...extra.values()];
+}
+
+const PREVIOUS_NAMES = "previous-names";
+
+function splitNames(value) {
+  return String(value || "").split(",").map((name) => name.trim()).filter(Boolean);
+}
+
+// old name (lower-case) -> current name, from the projects tab.
+function renamesFrom(projectRows) {
+  const map = new Map();
+  for (const row of projectRows) for (const old of splitNames(row[PREVIOUS_NAMES])) map.set(old.toLowerCase(), row.project);
+  return map;
+}
+
+async function renameProject(request, env, deps, name) {
+  const input = await body(request);
+  const from = String(name || "").trim();
+  const to = String(input.to || "").trim().replace(/\s+/g, " ");
+  if (!to) throw new HttpError(400, "Type the new name.");
+  if (to.length > 80) throw new HttpError(400, "That name is too long (80 characters at most).");
+  if (/,/.test(to)) throw new HttpError(400, "Project names can't contain commas.");
+  if (to === from) throw new HttpError(400, "That's already its name.");
+  const fromKey = from.toLowerCase();
+  const toKey = to.toLowerCase();
+
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab, projectsTab } = config(env);
+  const items = await readItemsTab(sheets, itemsTab);
+  const projects = await sheets.readTab(projectsTab).catch(() => null);
+  const keyOf = (value) => String(value || "").trim().toLowerCase();
+  const pieces = items.rows.filter((row) => keyOf(row["data-project"]) === fromKey);
+  const projectRows = projects ? projects.rows.filter((row) => keyOf(row.project) === fromKey) : [];
+  if (!pieces.length && !projectRows.length) throw new HttpError(404, `No project “${from}”.`);
+  if (toKey !== fromKey) {
+    const taken = items.rows.some((row) => keyOf(row["data-project"]) === toKey) || (projects?.rows || []).some((row) => keyOf(row.project) === toKey);
+    if (taken) throw new HttpError(409, `“${to}” already exists. Move its pieces or choose another name.`);
+  }
+
+  const projectColumn = items.headers.indexOf("data-project");
+  if (projectColumn === -1) throw new HttpError(409, `${itemsTab} has no "data-project" column.`);
+  await sheets.updateCells(itemsTab, pieces.map((row) => ({ row: row._row, column: projectColumn, value: to })));
+
+  const warnings = [];
+  if (!projects || !projects.headers.includes("project")) {
+    warnings.push(`The "${projectsTab}" tab has no "project" column, so the old address won't redirect to the new one.`);
+  } else {
+    let headers = projects.headers;
+    let previousColumn = headers.indexOf(PREVIOUS_NAMES);
+    if (previousColumn === -1) {
+      previousColumn = headers.length;
+      await sheets.updateCells(projectsTab, [{ row: 1, column: previousColumn, value: PREVIOUS_NAMES }]);
+      headers = [...headers, PREVIOUS_NAMES];
+    }
+    const nameColumn = headers.indexOf("project");
+    if (projectRows.length) {
+      const cells = [];
+      for (const row of projectRows) {
+        const previous = [...splitNames(row[PREVIOUS_NAMES]), from].filter((n, i, all) => n.toLowerCase() !== toKey && all.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
+        cells.push({ row: row._row, column: nameColumn, value: to }, { row: row._row, column: previousColumn, value: previous.join(", ") });
+      }
+      await sheets.updateCells(projectsTab, cells);
+    } else {
+      await sheets.appendRows(projectsTab, [toRow({ project: to, description: "", [PREVIOUS_NAMES]: from }, headers)]);
+    }
+  }
+
+  // Drafts and Studio-written descriptions follow the new name.
+  await env.DB.prepare("UPDATE drafts SET project = ?, updated_at = ? WHERE status = 'draft' AND lower(project) = ?").bind(to, nowIso(), fromKey).run();
+  const saved = await env.DB.prepare("SELECT * FROM project_drafts WHERE name = ?").bind(fromKey).first();
+  if (saved) {
+    await env.DB.prepare("DELETE FROM project_drafts WHERE name = ?").bind(fromKey).run();
+    await env.DB.prepare(
+      `INSERT INTO project_drafts (name, project, description, answers, updated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET project = excluded.project, description = excluded.description,
+         answers = excluded.answers, updated_at = excluded.updated_at`
+    )
+      .bind(toKey, to, saved.description, saved.answers, nowIso())
+      .run();
+  }
+
+  // Rebuilds the project pages and the redirect from the old address.
+  const deploy = await triggerSiteDeploy(env, deps.fetch);
+  if (!deploy.ok) warnings.push(`Renamed, but the site refresh didn't start: ${deploy.reason}`);
+  return json({ renamed: { from, to }, pieces: pieces.length, warnings, deploy });
+}
+
+// The alt texts written earlier (src/data/scroll-items.json and
+// video-alt-text.json) were only used as a fallback by the website. This
+// writes them into the sheet itself, for every row still showing
+// "This image/video needs a description." Text typed in the sheet is kept.
+async function fillAlts(env, deps) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const column = tab.headers.indexOf("alt");
+  if (column === -1) throw new HttpError(409, `${itemsTab} has no "alt" column.`);
+  const lookup = createAltLookup(localItems, videoAltText);
+  const cells = [];
+  const remaining = [];
+  for (const row of tab.rows) {
+    if (String(row["data-media-type"]).toLowerCase() === "text") continue;
+    const alt = String(row.alt || "").trim();
+    if (alt && !PLACEHOLDER_ALT.test(alt)) continue;
+    const text = lookup(alt, row.src);
+    if (text) cells.push({ row: row._row, column, value: text });
+    else remaining.push(row.id);
+  }
+  await sheets.updateCells(itemsTab, cells);
+  return json({ filled: cells.length, remaining });
+}
+
+async function respace(request, env, deps) {
+  const input = await body(request).catch(() => ({}));
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const missing = missingHeaders(tab.headers);
+  if (missing.length) throw new HttpError(409, `${itemsTab} is missing column(s): ${missing.join(", ")}.`);
+  const plan = planRespace(existingItems(tab));
+  if (input.dryRun || !plan.moves.length) return json({ dryRun: Boolean(input.dryRun), ...plan });
+
+  const column = tab.headers.indexOf("order");
+  const cells = plan.moves.map((move) => ({
+    row: tab.rows.find((row) => row.id === move.id)._row,
+    column,
+    value: String(move.order)
+  }));
+  await sheets.updateCells(itemsTab, cells);
+  const deploy = await triggerSiteDeploy(env, deps.fetch);
+  return json({ dryRun: false, ...plan, deploy });
+}
+
+async function deleteItem(env, deps, id) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const row = tab.rows.find((entry) => entry.id === id);
+  if (!row) throw new HttpError(404, `No piece "${id}" in ${itemsTab}.`);
+  if (String(row["data-media-type"]).toLowerCase() === "text") throw new HttpError(409, "Text cards like “{ Keep scrolling }” can't be deleted here.");
+  await sheets.deleteRows(itemsTab, [row._row]);
+  return json({ deleted: id });
+}
+
+async function deleteProject(env, deps, name) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab, projectsTab } = config(env);
+  const key = name.trim().toLowerCase();
+  const items = await readItemsTab(sheets, itemsTab);
+  const using = items.rows.filter((row) => String(row["data-project"] || "").trim().toLowerCase() === key).map((row) => row.id);
+  if (using.length) {
+    throw new HttpError(409, `“${name}” is still used by ${using.join(", ")}. Move or delete those pieces first.`);
+  }
+  const projects = await sheets.readTab(projectsTab);
+  const rows = projects.rows.filter((row) => String(row.project || "").trim().toLowerCase() === key).map((row) => row._row);
+  await sheets.deleteRows(projectsTab, rows);
+  // Forget the Studio's own saved description too, so it can't come back on a later Publish.
+  await env.DB.prepare("DELETE FROM project_drafts WHERE name = ?").bind(key).run();
+  return json({ deleted: name, rows: rows.length });
 }
 
 async function editItem(request, env, deps, id) {
   const input = await body(request);
   const sheets = sheetsFor(env, deps);
   const { itemsTab } = config(env);
-  const tab = await sheets.readTab(itemsTab);
+  const tab = await readItemsTab(sheets, itemsTab);
   const row = tab.rows.find((entry) => entry.id === id);
   if (!row) throw new HttpError(404, `No item "${id}" in ${itemsTab}.`);
   const cells = ITEM_TEXT_FIELDS.filter((field) => field in input).map((field) => {
@@ -340,6 +560,153 @@ async function editItem(request, env, deps, id) {
   if (!cells.length) throw new HttpError(400, `Nothing to change. Editable: ${ITEM_TEXT_FIELDS.join(", ")}.`);
   await sheets.updateCells(itemsTab, cells);
   return json({ updated: id, fields: cells.length });
+}
+
+// ---- order ------------------------------------------------------------------
+
+const PROJECT_ORDER = "project-order";
+
+function sameSet(a, b) {
+  return a.length === b.length && new Set(a).size === a.length && a.every((id) => b.includes(id));
+}
+
+// Saves the order dragged in the Order tab. The ids must be exactly the pieces
+// the tab showed, so a sheet edited in the meantime isn't half-overwritten.
+async function saveOrder(request, env, deps) {
+  const input = await body(request);
+  const ids = Array.isArray(input.ids) ? input.ids.map(String) : [];
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const stale = "The sheet changed since this page loaded. Reload the Order tab and try again.";
+
+  if (input.scope === "scroll") {
+    if (!sameSet(ids, tab.rows.map((row) => row.id))) throw new HttpError(409, stale);
+    const missing = missingHeaders(tab.headers);
+    if (missing.length) throw new HttpError(409, `${itemsTab} is missing column(s): ${missing.join(", ")}.`);
+    const textCards = tab.rows.filter((row) => String(row["data-media-type"]).toLowerCase() === "text").map((row) => row.id);
+    if (textCards.length && ids.indexOf(textCards[0]) !== 1) {
+      throw new HttpError(422, "“{ Keep scrolling }” has to stay second, right after the opening piece.");
+    }
+    const column = tab.headers.indexOf("order");
+    const byId = new Map(tab.rows.map((row) => [row.id, row]));
+    const cells = [];
+    ids.forEach((id, index) => {
+      const value = String((index + 1) * 10);
+      const row = byId.get(id);
+      if (String(row.order ?? "").trim() !== value) cells.push({ row: row._row, column, value });
+    });
+    await sheets.updateCells(itemsTab, cells);
+    const after = tab.rows.map((row) => ({ ...row, order: String((ids.indexOf(row.id) + 1) * 10) }));
+    return json({ saved: cells.length, spacing: spacingWarnings(existingItems({ rows: after }), 3) });
+  }
+
+  if (input.scope === "project") {
+    const key = String(input.project || "").trim().toLowerCase();
+    if (!key) throw new HttpError(400, "project is required.");
+    const rows = tab.rows.filter((row) => String(row["data-project"] || "").trim().toLowerCase() === key);
+    if (!rows.length) throw new HttpError(404, `No pieces in “${input.project}”.`);
+    if (!sameSet(ids, rows.map((row) => row.id))) throw new HttpError(409, stale);
+    let column = tab.headers.indexOf(PROJECT_ORDER);
+    if (column === -1) {
+      // First use: add the column at the end of row 1.
+      column = tab.headers.length;
+      await sheets.updateCells(itemsTab, [{ row: 1, column, value: PROJECT_ORDER }]);
+    }
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const cells = [];
+    ids.forEach((id, index) => {
+      const value = String(index + 1);
+      const row = byId.get(id);
+      if (String(row[PROJECT_ORDER] ?? "").trim() !== value) cells.push({ row: row._row, column, value });
+    });
+    await sheets.updateCells(itemsTab, cells);
+    return json({ saved: cells.length });
+  }
+
+  throw new HttpError(400, 'scope must be "scroll" or "project".');
+}
+
+// ---- library ----------------------------------------------------------------
+
+// "assets/SJC_Scene-03-320.webp" and ".../SJC_Scene-03.png" both -> "sjc_scene-03",
+// the same grouping as scripts/build-library.mjs.
+export function pieceKey(url) {
+  let name = String(url || "").trim().split(/[?#]/)[0].split("/").pop();
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    // keep it as written
+  }
+  return name
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/-(320|640|960|1080|1600)p?$/, "")
+    .toLowerCase();
+}
+
+function liveKeys(rows) {
+  const keys = new Set();
+  for (const row of rows) {
+    if (row.src) keys.add(pieceKey(row.src));
+    for (const part of String(row.srcset || "").split(",")) {
+      const url = part.trim().split(/\s+/)[0];
+      if (url) keys.add(pieceKey(url));
+    }
+  }
+  return keys;
+}
+
+async function pendingLibraryKeys(env) {
+  const { results } = await env.DB.prepare("SELECT library_key FROM drafts WHERE status = 'draft' AND library_key IS NOT NULL").all();
+  return new Set(results.map((row) => row.library_key));
+}
+
+async function listLibrary(env, deps, pieces) {
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab } = config(env);
+  const tab = await readItemsTab(sheets, itemsTab);
+  const live = liveKeys(tab.rows);
+  const pending = await pendingLibraryKeys(env);
+  const renames = renamesFrom((await sheets.readTab(config(env).projectsTab).catch(() => ({ rows: [] }))).rows);
+  const notLive = pieces
+    .filter((piece) => !live.has(piece.key.toLowerCase()))
+    .map((piece) => (renames.has(String(piece.project).toLowerCase()) ? { ...piece, project: renames.get(String(piece.project).toLowerCase()) } : piece));
+  return json({
+    total: pieces.length,
+    onSite: pieces.length - notLive.length,
+    pieces: notLive.map((piece) => ({ ...piece, inDrafts: pending.has(piece.key) }))
+  });
+}
+
+async function addFromLibrary(request, env, deps, pieces) {
+  const input = await body(request);
+  let renames = new Map();
+  try {
+    renames = renamesFrom((await sheetsFor(env, deps).readTab(config(env).projectsTab)).rows);
+  } catch {
+    // Without the sheet, keep the library's own project names.
+  }
+  const keys = Array.isArray(input.keys) ? [...new Set(input.keys.map(String))] : [];
+  if (!keys.length) throw new HttpError(400, "Choose at least one piece.");
+  const byKey = new Map(pieces.map((piece) => [piece.key, piece]));
+  const unknown = keys.filter((key) => !byKey.has(key));
+  if (unknown.length) throw new HttpError(404, `Not in the library: ${unknown.join(", ")}.`);
+  const pending = await pendingLibraryKeys(env);
+  const added = [];
+  for (const key of keys) {
+    if (pending.has(key)) continue;
+    const piece = byKey.get(key);
+    const id = crypto.randomUUID();
+    const time = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO drafts (id, created_at, updated_at, status, kind, file_name, width, height, src, variants, frames, project, library_key)
+       VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
+    )
+      .bind(id, time, time, piece.kind, piece.src.split("/").pop(), piece.width, piece.height, piece.src, JSON.stringify(piece.variants || {}), renames.get(String(piece.project).toLowerCase()) || piece.project || null, key)
+      .run();
+    added.push(id);
+  }
+  return json({ added: added.length, skipped: keys.length - added.length }, 201);
 }
 
 // Write (or update) project descriptions in the "projects" tab.
@@ -371,7 +738,7 @@ async function publish(request, env, deps) {
 
   const placeholders = ids.map(() => "?").join(", ");
   const { results } = await env.DB.prepare(
-    `SELECT * FROM drafts WHERE status = 'draft' AND id IN (${placeholders}) ORDER BY created_at`
+    `SELECT * FROM drafts WHERE status = 'draft' AND id IN (${placeholders}) ORDER BY created_at, rowid`
   )
     .bind(...ids)
     .all();
@@ -381,14 +748,14 @@ async function publish(request, env, deps) {
   const problems = [];
   for (const draft of drafts) {
     if (!draft.src) problems.push(`${draft.file_name}: the file hasn't finished uploading.`);
-    if (draft.kind === "image" && Object.keys(draft.variants).length < 4) problems.push(`${draft.file_name}: smaller sizes are missing.`);
+    if (draft.kind === "image" && !draft.library_key && Object.keys(draft.variants).length < 4) problems.push(`${draft.file_name}: smaller sizes are missing.`);
     if (!draft.project) problems.push(`${draft.file_name}: choose a project.`);
   }
   if (problems.length) throw new HttpError(422, problems.join(" "));
 
   const sheets = sheetsFor(env, deps);
   const { itemsTab, projectsTab } = config(env);
-  const tab = await sheets.readTab(itemsTab);
+  const tab = await readItemsTab(sheets, itemsTab);
   const missing = missingHeaders(tab.headers);
   if (missing.length) {
     throw new HttpError(409, `${itemsTab} is missing column(s): ${missing.join(", ")}. Add them to row 1, then try again.`);
@@ -462,19 +829,30 @@ async function editProjectDescription(request, env, deps, name) {
   return json({ updated: project });
 }
 
+// Which connections are configured. Only yes/no: never a value.
+function setupStatus(env, deps) {
+  const missing = [];
+  if (!deps.sheets && !(env.SHEET_ID && env.GOOGLE_SERVICE_ACCOUNT_JSON)) missing.push({ secret: "GOOGLE_SERVICE_ACCOUNT_JSON", needed: "reading and publishing to the Google Sheet" });
+  if (!deps.ai && !env.ANTHROPIC_API_KEY) missing.push({ secret: "ANTHROPIC_API_KEY", needed: "AI drafts" });
+  if (!env.GITHUB_TOKEN) missing.push({ secret: "GITHUB_TOKEN", needed: "refreshing the site for search engines after Publish" });
+  return { ready: missing.length === 0, missing };
+}
+
 // ---- router ---------------------------------------------------------------
 
 export async function handle(request, env, deps = {}) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return null; // static UI
 
-  const user = await authenticate(request, env, deps.fetch);
-  if (!user) return json({ error: "Sign in through Cloudflare Access." }, 401);
+  const access = await checkAccess(request, env, deps.fetch);
+  const user = access.user;
+  if (!user) return json({ error: refusalMessage(access), reason: access.reason }, 401);
 
   const parts = url.pathname.split("/").filter(Boolean).slice(1); // drop "api"
   const method = request.method;
   try {
     if (parts[0] === "me" && method === "GET") return json(user);
+    if (parts[0] === "status" && method === "GET") return json(setupStatus(env, deps));
     if (parts[0] === "drafts") {
       if (parts.length === 1 && method === "GET") return await listDrafts(env);
       if (parts.length === 1 && method === "POST") return await createDraft(request, env);
@@ -489,8 +867,22 @@ export async function handle(request, env, deps = {}) {
       if (parts.length === 3 && parts[2] === "write" && method === "POST") return await aiWriteDescription(request, env, deps, parts[1]);
     }
     if (parts[0] === "content" && method === "GET") return await readContent(env, deps);
+    if (parts[0] === "items" && parts[1] === "fill-alts" && method === "POST") return await fillAlts(env, deps);
+    if (parts[0] === "respace" && method === "POST") return await respace(request, env, deps);
+    if (parts[0] === "deploy" && method === "POST") {
+      // Live edits reach visitors at once; this rebuilds the pages search engines read.
+      const deploy = await triggerSiteDeploy(env, deps.fetch);
+      if (!deploy.ok) throw new HttpError(502, `The site refresh didn't start: ${deploy.reason}`);
+      return json({ started: true });
+    }
+    if (parts[0] === "items" && parts.length === 2 && method === "DELETE") return await deleteItem(env, deps, decodeURIComponent(parts[1]));
+    if (parts[0] === "projects" && parts.length === 3 && parts[2] === "rename" && method === "POST") return await renameProject(request, env, deps, decodeURIComponent(parts[1]));
+    if (parts[0] === "projects" && parts.length === 2 && method === "DELETE") return await deleteProject(env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
+    if (parts[0] === "library" && parts.length === 1 && method === "GET") return await listLibrary(env, deps, deps.library || library);
+    if (parts[0] === "library" && parts[1] === "add" && method === "POST") return await addFromLibrary(request, env, deps, deps.library || library);
+    if (parts[0] === "order" && method === "PUT") return await saveOrder(request, env, deps);
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);
     return json({ error: "Not found." }, 404);
   } catch (error) {

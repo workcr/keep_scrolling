@@ -1,4 +1,4 @@
-import { authenticate } from "./lib/access.js";
+import { checkAccess, refusalMessage } from "./lib/access.js";
 import { handle } from "./app.js";
 import { fakeAi } from "./dev/fakeAi.js";
 import { fakeSheets, sampleSheet } from "./dev/fakeSheets.js";
@@ -22,8 +22,9 @@ export default {
     if (response) return response;
     // Everything that isn't /api/* is the Studio page (studio/public). It holds
     // no data, but it still requires the signed-in owner.
-    if (!(await authenticate(request, env))) {
-      return new Response("Sign in through Cloudflare Access to use the Studio.", { status: 401 });
+    const access = await checkAccess(request, env);
+    if (!access.user) {
+      return new Response(refusalMessage(access), { status: 401, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
     }
     return env.ASSETS.fetch(request);
   }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { authenticate, resetAccessKeyCache } from "./access.js";
+import { authenticate, checkAccess, refusalMessage, resetAccessKeyCache } from "./access.js";
 import { triggerSiteDeploy } from "./github.js";
 import { base64urlDecode, signJwt, verifyJwt } from "./jwt.js";
 import { columnLetter, createSheetsClient, resetTokenCache } from "./sheets.js";
@@ -60,6 +60,24 @@ describe("Cloudflare Access check", () => {
     }
   });
 
+  it("explains refusals to a signed-in owner, and nothing to a stranger", async () => {
+    const check = async (token, e = env) => checkAccess(accessRequest(token), e, fetchKeys);
+    expect((await check(null)).reason).toBe("no-login");
+    expect(refusalMessage(await check(null))).toBe("Sign in through Cloudflare Access to use the Studio.");
+    expect(await check(await sign({ aud: ["new-app"] }))).toMatchObject({ reason: "token-rejected", detail: "wrong audience" });
+    expect(refusalMessage(await check(await sign({ aud: ["new-app"] })))).toMatch(/AUD tag/);
+    expect(await check(await sign({ email: "other@example.com" }))).toMatchObject({ reason: "email-not-allowed", detail: "other@example.com" });
+    expect(await check(await sign({}), { ...env, ALLOWED_EMAILS: "" })).toMatchObject({ reason: "not-configured", detail: "ALLOWED_EMAILS secret" });
+    expect((await check(await sign({}))).user).toEqual({ email: "rmnds1@gmail.com" });
+  });
+
+  it("accepts the owner by email fingerprint, so the address needn't be in the public repo", async () => {
+    const hashed = { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD, ALLOWED_EMAIL_SHA256: "646310a8ebe3c1c53d21a39d19f3f55ca69a44d651ca8f86f330c1834a689046" };
+    expect((await checkAccess(accessRequest(await sign({})), hashed, fetchKeys)).user).toEqual({ email: "rmnds1@gmail.com" });
+    expect((await checkAccess(accessRequest(await sign({ email: "RMNDS1@gmail.com" })), hashed, fetchKeys)).user).toEqual({ email: "rmnds1@gmail.com" });
+    expect((await checkAccess(accessRequest(await sign({ email: "other@example.com" })), hashed, fetchKeys)).reason).toBe("email-not-allowed");
+  });
+
   it("fails closed when Access is not configured", async () => {
     expect(await authenticate(accessRequest(await sign({})), {}, fetchKeys)).toBeNull();
   });
@@ -117,6 +135,31 @@ describe("Google Sheets client", () => {
     expect(urls.some((u) => u.includes(":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"))).toBe(true);
     const batch = JSON.parse(calls.find((c) => c.url.endsWith("/values:batchUpdate")).init.body);
     expect(batch.data[0].range).toBe("'projects'!B4");
+  });
+
+  it("deletes rows bottom-up in the right tab", async () => {
+    resetTokenCache();
+    const pair = await crypto.subtle.generateKey(RS256, true, ["sign", "verify"]);
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(String.fromCharCode(...pkcs8))}\n-----END PRIVATE KEY-----\n`;
+    const account = JSON.stringify({ client_email: "studio@p.iam.gserviceaccount.com", private_key: pem });
+    const calls = [];
+    const fakeFetch = async (url, init = {}) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes("oauth2")) return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+      if (String(url).includes("?fields=")) {
+        return new Response(JSON.stringify({ sheets: [{ properties: { sheetId: 0, title: "Sheet1" } }, { properties: { sheetId: 77, title: "projects" } }] }));
+      }
+      return new Response("{}");
+    };
+    const sheets = createSheetsClient({ spreadsheetId: "SHEET", serviceAccountJson: account, fetchImpl: fakeFetch });
+    await sheets.deleteRows("projects", [3, 9]);
+    const batch = calls.find((c) => c.url.endsWith("/SHEET:batchUpdate"));
+    expect(JSON.parse(batch.init.body).requests).toEqual([
+      { deleteDimension: { range: { sheetId: 77, dimension: "ROWS", startIndex: 8, endIndex: 9 } } },
+      { deleteDimension: { range: { sheetId: 77, dimension: "ROWS", startIndex: 2, endIndex: 3 } } }
+    ]);
+    await expect(sheets.deleteRows("Nope", [2])).rejects.toThrow(/No tab named/);
   });
 
   it("names columns like the spreadsheet does", () => {

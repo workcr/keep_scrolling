@@ -1,6 +1,6 @@
 import { Link, useLoaderData } from "react-router-dom";
 import Seo from "../components/Seo";
-import { SITE } from "../site";
+import { SITE, titleCase } from "../site";
 
 export default function FiltersPage() {
   const { items } = useLoaderData();
@@ -43,7 +43,7 @@ export default function FiltersPage() {
               {groups.client.map((value) => (
                 <li key={`client-${value}`}>
                   <Link to={`/gallery?client=${encodeURIComponent(value)}`} className="lg:ml-2">
-                    {value}
+                    {titleCase(value)}
                   </Link>
                 </li>
               ))}
@@ -56,7 +56,7 @@ export default function FiltersPage() {
               {groups.project.map((value) => (
                 <li key={`project-${value}`}>
                   <Link to={`/gallery?project=${encodeURIComponent(value)}`} className="lg:ml-2">
-                    {value}
+                    {titleCase(value)}
                   </Link>
                 </li>
               ))}
@@ -69,7 +69,7 @@ export default function FiltersPage() {
               {groups.category.map((value) => (
                 <li key={`category-${value}`}>
                   <Link to={`/gallery?category=${encodeURIComponent(value)}`} className="lg:ml-2">
-                    {value}
+                    {titleCase(value)}
                   </Link>
                 </li>
               ))}
@@ -82,7 +82,7 @@ export default function FiltersPage() {
               {groups.discipline.map((value) => (
                 <li key={`discipline-${value}`}>
                   <Link to={`/gallery?discipline=${encodeURIComponent(value)}`} className="lg:ml-2">
-                    {value}
+                    {titleCase(value)}
                   </Link>
                 </li>
               ))}

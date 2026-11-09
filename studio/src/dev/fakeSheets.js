@@ -42,6 +42,10 @@ export function fakeSheets(tabs) {
         while (target.length <= column) target.push("");
         target[column] = value;
       }
+    },
+    async deleteRows(name, rows) {
+      calls.push({ type: "delete", name, rows });
+      for (const row of [...new Set(rows)].sort((a, b) => b - a)) tabs[name].splice(row - 1, 1);
     }
   };
 }

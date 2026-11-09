@@ -1,5 +1,22 @@
+// "guaraná world cup cans" -> "guarana-world-cup-cans": plain ASCII, so the
+// address, the prerendered file name and the sitemap entry all agree.
 export function slugifyProjectName(name = "") {
-  return String(name).trim().toLowerCase().replace(/\s+/g, "-");
+  return String(name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// Earlier names of a project (projects tab, "previous-names", comma-separated),
+// written by the Studio's Rename so old links keep working.
+export function previousNames(project = {}) {
+  return String(project["previous-names"] || "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
 }
 
 export function resolveMediaUrl(item) {
