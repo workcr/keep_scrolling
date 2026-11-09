@@ -9,9 +9,9 @@ export default function NavBar() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const isGalleryRoute = location.pathname === "/gallery";
-  // On the home page: the project of the piece under the pointer.
+  // Home and gallery: the project of the piece under the pointer.
   const hoverProject = useHoverProject();
-  const showHoverProject = location.pathname === "/" && hoverProject;
+  const showHoverProject = (location.pathname === "/" || isGalleryRoute) && hoverProject;
   const activeFilter =
     searchParams.get("client") ||
     searchParams.get("project") ||

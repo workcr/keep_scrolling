@@ -4,7 +4,7 @@ import HomeIntro, { introAlreadySeen } from "../components/HomeIntro";
 import MediaCard from "../components/MediaCard";
 import Seo from "../components/Seo";
 import scrollItems from "../data/scroll-items.json";
-import { setHoverProject } from "../hoverProject";
+import { useHoverProjectTracking } from "../hoverProject";
 import { SITE } from "../site";
 import { slugifyProjectName } from "../utils";
 
@@ -207,43 +207,8 @@ export default function Home() {
     };
   }, []);
 
-  // Which project is under the pointer, for the nav bar. Checked when the
-  // pointer moves and when pieces move under a still pointer (scrolling).
-  const pointerRef = useRef(null);
-  const updateHoverProject = useCallback(() => {
-    const point = pointerRef.current;
-    if (!point || introActive) {
-      setHoverProject(null);
-      return;
-    }
-    const link = document.elementFromPoint(point.x, point.y)?.closest?.("[data-project-name]");
-    setHoverProject(link ? link.dataset.projectName : null);
-  }, [introActive]);
-
-  useEffect(() => {
-    updateHoverProject();
-  }, [smoothedScroll, updateHoverProject]);
-
-  useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return undefined;
-    const onMove = (event) => {
-      if (event.pointerType !== "mouse") return;
-      pointerRef.current = { x: event.clientX, y: event.clientY };
-      updateHoverProject();
-    };
-    const onLeave = () => {
-      pointerRef.current = null;
-      setHoverProject(null);
-    };
-    scroller.addEventListener("pointermove", onMove, { passive: true });
-    scroller.addEventListener("pointerleave", onLeave);
-    return () => {
-      scroller.removeEventListener("pointermove", onMove);
-      scroller.removeEventListener("pointerleave", onLeave);
-      setHoverProject(null);
-    };
-  }, [updateHoverProject]);
+  // Which project is under the pointer, for the nav bar (not during the intro).
+  useHoverProjectTracking(!introActive);
 
   const spacerHeight = Math.max(3200, items.length * ITEM_STEP_PX + 1000);
   const promptOpacity = clamp(1 - smoothedScroll / 220, 0, 1);
