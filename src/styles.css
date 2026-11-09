@@ -62,47 +62,6 @@
   pointer-events: auto;
 }
 
-/* Project name on hover, bottom left of each piece: a small outlined pill
-   that inverts whatever is behind it (difference blend), so it reads on
-   light and dark work alike. Pointer devices only; on touch screens a hover
-   state would make the first tap just show it. */
-.home-item-link {
-  position: relative;
-}
-
-.home-item-label {
-  position: absolute;
-  /* Undo the piece's own scale, so the pill keeps one size while it grows. */
-  left: calc(10px / var(--item-scale, 1));
-  bottom: calc(10px / var(--item-scale, 1));
-  transform-origin: left bottom;
-  padding: 3px 8px;
-  border: 1px solid #ffffff;
-  border-radius: 9999px;
-  background: transparent;
-  color: #ffffff;
-  mix-blend-mode: difference;
-  font-size: 10px;
-  line-height: 1.2;
-  white-space: nowrap;
-  opacity: 0;
-  transform: scale(calc(1 / var(--item-scale, 1))) translateY(4px);
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
-  pointer-events: none;
-}
-
-@media (hover: hover) {
-  .home-item-link:hover .home-item-label {
-    opacity: 1;
-    transform: scale(calc(1 / var(--item-scale, 1)));
-  }
-}
-
-.home-item-link:focus-visible .home-item-label {
-  opacity: 1;
-  transform: scale(calc(1 / var(--item-scale, 1)));
-}
-
 .home-item-link iframe {
   pointer-events: none;
 }
@@ -584,4 +543,10 @@ nav button.filter-mobile {
   .home-wordmark {
     --home-wordmark-bottom: 64px;
   }
+}
+
+/* Home page: the project under the pointer, in the nav after "Filters". */
+.nav-hover-project {
+  white-space: nowrap;
+  pointer-events: none;
 }

@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
+import { act } from "react";
+import { setHoverProject } from "../hoverProject";
 import NavBar from "./NavBar";
 
 describe("NavBar", () => {
@@ -25,5 +27,25 @@ describe("NavBar", () => {
     );
 
     expect(screen.getAllByRole("button", { name: /acme/i })).toHaveLength(2);
+  });
+
+  it("shows the hovered project after Filters on the home page only", () => {
+    const home = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <NavBar />
+      </MemoryRouter>
+    );
+    expect(home.container.querySelector(".nav-hover-project")).toBeNull();
+    act(() => setHoverProject("dtms branding"));
+    expect(home.container.querySelector(".nav-hover-project").textContent).toBe("DTMS Branding");
+    home.unmount();
+
+    const about = render(
+      <MemoryRouter initialEntries={["/about"]}>
+        <NavBar />
+      </MemoryRouter>
+    );
+    expect(about.container.querySelector(".nav-hover-project")).toBeNull();
+    act(() => setHoverProject(null));
   });
 });

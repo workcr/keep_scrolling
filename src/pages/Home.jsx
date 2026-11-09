@@ -4,7 +4,8 @@ import HomeIntro, { introAlreadySeen } from "../components/HomeIntro";
 import MediaCard from "../components/MediaCard";
 import Seo from "../components/Seo";
 import scrollItems from "../data/scroll-items.json";
-import { SITE, titleCase } from "../site";
+import { setHoverProject } from "../hoverProject";
+import { SITE } from "../site";
 import { slugifyProjectName } from "../utils";
 
 const INITIAL_BATCH = 24;
@@ -206,6 +207,44 @@ export default function Home() {
     };
   }, []);
 
+  // Which project is under the pointer, for the nav bar. Checked when the
+  // pointer moves and when pieces move under a still pointer (scrolling).
+  const pointerRef = useRef(null);
+  const updateHoverProject = useCallback(() => {
+    const point = pointerRef.current;
+    if (!point || introActive) {
+      setHoverProject(null);
+      return;
+    }
+    const link = document.elementFromPoint(point.x, point.y)?.closest?.("[data-project-name]");
+    setHoverProject(link ? link.dataset.projectName : null);
+  }, [introActive]);
+
+  useEffect(() => {
+    updateHoverProject();
+  }, [smoothedScroll, updateHoverProject]);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return undefined;
+    const onMove = (event) => {
+      if (event.pointerType !== "mouse") return;
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+      updateHoverProject();
+    };
+    const onLeave = () => {
+      pointerRef.current = null;
+      setHoverProject(null);
+    };
+    scroller.addEventListener("pointermove", onMove, { passive: true });
+    scroller.addEventListener("pointerleave", onLeave);
+    return () => {
+      scroller.removeEventListener("pointermove", onMove);
+      scroller.removeEventListener("pointerleave", onLeave);
+      setHoverProject(null);
+    };
+  }, [updateHoverProject]);
+
   const spacerHeight = Math.max(3200, items.length * ITEM_STEP_PX + 1000);
   const promptOpacity = clamp(1 - smoothedScroll / 220, 0, 1);
   const currentIndex = Math.max(0, Math.floor(smoothedScroll / ITEM_STEP_PX));
@@ -315,8 +354,6 @@ export default function Home() {
                   width: `${targetWidthPx}px`,
                   height: `${targetHeightPx}px`,
                   transform: `translate(-50%, -50%) scale(${scale})`,
-                  // Lets the project label stay the same size while the piece grows.
-                  "--item-scale": Math.max(scale, 0.15),
                   aspectRatio: numericAspect ? `${numericAspect}` : parsedStyle.aspectRatio
                 }}
               >
@@ -327,11 +364,9 @@ export default function Home() {
                     to={`/project/${projectSlug}`}
                     className="home-item-link"
                     aria-label={`View ${projectName} project`}
+                    data-project-name={projectName}
                   >
                     {mediaNode}
-                    <span className="home-item-label" aria-hidden="true">
-                      {titleCase(projectName)}
-                    </span>
                   </Link>
                 ) : (
                   mediaNode
