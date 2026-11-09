@@ -592,3 +592,14 @@ body::before {
   z-index: -1;
   background: #ffffff;
 }
+
+/* Home: the scroll runs under the header too (main has no top padding there),
+   and "keep scRolling" is moved down by the header's height so it stays
+   exactly where it was. The intro's wordmark uses the same class. */
+main:has(.home-scroll-container) {
+  padding-top: 0;
+}
+
+.home-scroll-container .home-wordmark {
+  bottom: calc(var(--home-wordmark-bottom, 24px) - 66px);
+}
