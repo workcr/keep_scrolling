@@ -4,7 +4,7 @@
 export const SITE = {
   url: "https://keep-scrolling.com",
   // Opening line of the home page (src/components/HomeIntro.jsx).
-  intro: "Hi, I’m Rodrigo Mendes, a Creative Director who builds ideas into systems that make a lasting impact on culture.",
+  intro: "Hi, I’m Rodrigo Mendes, a Creative Director who builds ideas into systems that keep shaping culture.",
   name: "Rodrigo Mendes",
   siteName: "Keep Scrolling — Rodrigo Mendes",
   jobTitle: "Creative Director",

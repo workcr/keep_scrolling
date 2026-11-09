@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-// Opening of the home page: the introduction scrolls up on its own, the
-// visitor's wheel, swipe or arrow keys take over at any moment (and it picks
-// up again after a pause), and it ends with its "keep scRolling" exactly where
-// the page's own wordmark sits, so the hand-over is invisible.
+// Opening of the home page. The introduction scrolls up like a column of
+// text; "keep scRolling" follows as its last line, then sticks to the bottom
+// (exactly where the page's own wordmark sits) while the text keeps going up
+// and out. It plays on its own; the visitor's wheel, swipe or arrow keys take
+// over at any moment, and it picks up again after a pause.
 //
 // Shown once per visit. With "reduce motion" on, it never moves by itself.
 
@@ -36,11 +37,11 @@ function prefersReducedMotion() {
 /**
  * @param {{ text: string, wordmarkSrc: string, pageWordmarkRef: { current: HTMLElement | null }, onDone: () => void }} props
  */
-export default function HomeIntro({ text, wordmarkSrc, pageWordmarkRef, onDone }) {
+export default function HomeIntro({ text, wordmarkSrc, pageWordmarkRef, frameRef, onDone }) {
   const overlayRef = useRef(null);
   const textRef = useRef(null);
   const markRef = useRef(null);
-  const [layout, setLayout] = useState(null); // { start, landAt, exitBy, markLeft, markWidth }
+  const [layout, setLayout] = useState(null); // { start, markOffset, landY, total, markLeft, markWidth }
   const [position, setPosition] = useState(0);
   const finishedRef = useRef(false);
 
@@ -51,21 +52,23 @@ export default function HomeIntro({ text, wordmarkSrc, pageWordmarkRef, onDone }
       const page = pageWordmarkRef.current;
       const textNode = textRef.current;
       if (!overlay || !page || !textNode) return;
+      // Cover exactly the area the home page scrolls in, so our wordmark and
+      // the page's share one frame on every device.
+      const frame = frameRef?.current?.getBoundingClientRect();
+      if (frame) {
+        Object.assign(overlay.style, { top: `${frame.top}px`, left: `${frame.left}px`, width: `${frame.width}px`, height: `${frame.height}px` });
+      }
       const box = overlay.getBoundingClientRect();
       const mark = page.getBoundingClientRect();
-      const start = Math.round(box.height * 0.06);
-      // Sit right under the nav, whatever its height.
-      const navBottom = document.querySelector("nav")?.getBoundingClientRect().bottom;
-      if (Number.isFinite(navBottom) && Math.round(navBottom) !== Math.round(box.top)) {
-        overlay.style.top = `${navBottom}px`;
-        return measure();
-      }
-      const markTop = mark.top - box.top; // where our wordmark must end, inside the overlay
-      const markOffset = markRef.current ? markRef.current.offsetTop : textNode.offsetHeight;
+      const textHeight = textNode.offsetHeight;
+      // Copy that fills the screen starts at the top; copy that would fit at
+      // once (phones) slides in from the bottom instead.
+      const start = textHeight > box.height * 0.9 ? Math.round(box.height * 0.06) : Math.round(box.height * 0.85);
       setLayout({
         start,
-        landAt: Math.max(0, start + markOffset - markTop), // whole block moves until the wordmark lands
-        exitBy: markTop, // then the text alone keeps going until it's gone
+        markOffset: markRef.current ? markRef.current.offsetTop : textHeight,
+        landY: mark.top - box.top, // where our wordmark sticks: on the page's own
+        total: start + textHeight, // until the last line has left the top
         markLeft: mark.left - box.left,
         markWidth: mark.width
       });
@@ -80,11 +83,11 @@ export default function HomeIntro({ text, wordmarkSrc, pageWordmarkRef, onDone }
       window.removeEventListener("resize", again);
       img?.removeEventListener?.("load", again);
     };
-  }, [pageWordmarkRef]);
+  }, [pageWordmarkRef, frameRef]);
 
   useEffect(() => {
     if (!layout) return undefined;
-    const total = layout.landAt + layout.exitBy;
+    const { total } = layout;
     const reduced = prefersReducedMotion();
     const speed = total / AUTO_SECONDS; // px per second
     let target = 0;
@@ -171,23 +174,29 @@ export default function HomeIntro({ text, wordmarkSrc, pageWordmarkRef, onDone }
     };
   }, [layout, onDone]);
 
-  const blockY = layout ? layout.start - Math.min(position, layout.landAt) : 0;
-  const textExtra = layout ? Math.max(0, position - layout.landAt) : 0;
+  const textY = layout ? layout.start - position : 0;
+  // The wordmark rides along as the last line, then stays at the bottom.
+  const markY = layout ? Math.max(textY + layout.markOffset, layout.landY) : 0;
 
   return (
     <div ref={overlayRef} className="home-intro" aria-hidden="true" style={{ visibility: layout ? "visible" : "hidden" }}>
-      <div className="home-intro-block" style={{ transform: `translate3d(0, ${blockY}px, 0)` }}>
-        <p ref={textRef} className="home-intro-text" style={{ transform: `translate3d(0, ${-textExtra}px, 0)` }}>
+      <div className="home-intro-block" style={{ transform: `translate3d(0, ${textY}px, 0)` }}>
+        <p ref={textRef} className="home-intro-text">
           {text}
         </p>
-        <img
-          ref={markRef}
-          src={wordmarkSrc}
-          alt=""
-          className="home-intro-mark"
-          style={layout ? { width: `${layout.markWidth}px`, marginLeft: `${layout.markLeft}px` } : undefined}
-        />
+        {/* Holds the wordmark's place at the end of the text, for measuring. */}
+        <div ref={markRef} />
       </div>
+      <img
+        src={wordmarkSrc}
+        alt=""
+        className="home-intro-mark"
+        style={
+          layout
+            ? { width: `${layout.markWidth}px`, left: `${layout.markLeft}px`, transform: `translate3d(0, ${markY}px, 0)` }
+            : { visibility: "hidden" }
+        }
+      />
     </div>
   );
 }
