@@ -4,7 +4,7 @@ import HomeIntro, { introAlreadySeen } from "../components/HomeIntro";
 import MediaCard from "../components/MediaCard";
 import Seo from "../components/Seo";
 import scrollItems from "../data/scroll-items.json";
-import { SITE, titleCase } from "../site";
+import { SITE } from "../site";
 import { slugifyProjectName } from "../utils";
 
 const INITIAL_BATCH = 24;
@@ -315,8 +315,6 @@ export default function Home() {
                   width: `${targetWidthPx}px`,
                   height: `${targetHeightPx}px`,
                   transform: `translate(-50%, -50%) scale(${scale})`,
-                  // Lets the project label stay the same size while the piece grows.
-                  "--item-scale": Math.max(scale, 0.15),
                   aspectRatio: numericAspect ? `${numericAspect}` : parsedStyle.aspectRatio
                 }}
               >
@@ -329,9 +327,6 @@ export default function Home() {
                     aria-label={`View ${projectName} project`}
                   >
                     {mediaNode}
-                    <span className="home-item-label" aria-hidden="true">
-                      {titleCase(projectName)}
-                    </span>
                   </Link>
                 ) : (
                   mediaNode
