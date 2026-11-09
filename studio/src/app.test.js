@@ -506,3 +506,48 @@ describe("order", () => {
     expect((await api("PUT", "/api/order", { json: { scope: "project", project: "nope", ids: [] } })).status).toBe(404);
   });
 });
+
+describe("rename project", () => {
+  const rowsOf = (tab) => {
+    const [headers, ...rows] = sheets.tabs[tab];
+    return rows.map((cells) => Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? ""])));
+  };
+
+  it("renames every piece, the description row, drafts and saved texts, and remembers the old name", async () => {
+    const before = rowsOf("Sheet1").filter((r) => r["data-project"] === "surf overdose").length;
+    const draft = await imageDraft("cap.png", "Surf Overdose");
+    await api("PUT", "/api/project-drafts/surf%20overdose", { json: { project: "surf overdose", description: "Saved text." } });
+
+    const result = await api("POST", "/api/projects/surf%20overdose/rename", { json: { to: "surf junkie club overdose" } });
+    expect(result.status).toBe(200);
+    expect(result.data.pieces).toBe(before);
+    expect(rowsOf("Sheet1").filter((r) => r["data-project"] === "surf overdose")).toEqual([]);
+    expect(rowsOf("Sheet1").filter((r) => r["data-project"] === "surf junkie club overdose").length).toBe(before);
+    expect(rowsOf("projects")).toEqual([
+      { project: "surf junkie club overdose", description: expect.stringContaining("Surf Overdose"), "previous-names": "surf overdose" }
+    ]);
+    const { drafts } = (await api("GET", "/api/drafts")).data;
+    expect(drafts.find((d) => d.id === draft).project).toBe("surf junkie club overdose");
+    const { projects } = (await api("GET", "/api/project-drafts")).data;
+    expect(projects.map((p) => [p.name, p.description])).toEqual([["surf junkie club overdose", "Saved text."]]);
+    expect(deployCalls.some((url) => url.includes("/dispatches"))).toBe(true);
+
+    // Renaming again keeps the whole history, so every old link still works.
+    await api("POST", "/api/projects/surf%20junkie%20club%20overdose/rename", { json: { to: "sjc" } });
+    expect(rowsOf("projects")[0]["previous-names"]).toBe("surf overdose, surf junkie club overdose");
+  });
+
+  it("adds a projects row for a project that had none, and refuses names in use", async () => {
+    const result = await api("POST", "/api/projects/fastest%20ever/rename", { json: { to: "nike fastest ever" } });
+    expect(result.status).toBe(200);
+    expect(rowsOf("projects").at(-1)).toEqual({ project: "nike fastest ever", description: "", "previous-names": "fastest ever" });
+    expect((await api("POST", "/api/projects/cce/rename", { json: { to: "Surf Overdose" } })).status).toBe(409);
+    expect((await api("POST", "/api/projects/nope/rename", { json: { to: "x" } })).status).toBe(404);
+    expect((await api("POST", "/api/projects/cce/rename", { json: { to: "a, b" } })).status).toBe(400);
+  });
+
+  it("lists projects that only exist on pieces, so they can be renamed too", async () => {
+    const { projects } = (await api("GET", "/api/content")).data;
+    expect(projects.find((p) => p.project === "cce")).toMatchObject({ notInTab: true });
+  });
+});

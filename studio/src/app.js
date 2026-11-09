@@ -18,6 +18,7 @@
 //   POST   /api/respace                    { dryRun } move only pieces that sit too close to their project
 //   PUT    /api/projects/:name             edit a live project's description (projects tab)
 //   DELETE /api/items/:id                  remove a piece's row from Sheet1 (its files stay in R2)
+//   POST   /api/projects/:name/rename      { to } rename a project everywhere; its old address redirects to the new one
 //   DELETE /api/projects/:name             remove a project's row from the projects tab (refused while pieces use it)
 //   GET    /api/library                    pieces in src/assets that aren't on the site yet
 //   POST   /api/library/add                { keys } -> drafts for those pieces (no upload needed)
@@ -366,11 +367,108 @@ async function readContent(env, deps) {
     items: items.rows,
     headers: items.headers,
     missingColumns: missingHeaders(items.headers),
-    projects: projects ? projects.rows : [],
+    projects: withItemOnlyProjects(projects ? projects.rows : [], items.rows),
     ignoredRows: items.ignored,
     // Only pieces really close together (under 3 apart); publishing aims for 6+.
     spacing: spacingWarnings(existingItems(items), 3)
   });
+}
+
+// Projects used by pieces but missing from the projects tab still need to be
+// listed (to rename them, or give them a description).
+function withItemOnlyProjects(projectRows, itemRows) {
+  const known = new Set(projectRows.map((row) => String(row.project || "").trim().toLowerCase()));
+  const extra = new Map();
+  for (const row of itemRows) {
+    const name = String(row["data-project"] || "").trim();
+    if (name && !known.has(name.toLowerCase()) && !extra.has(name.toLowerCase())) extra.set(name.toLowerCase(), { project: name, description: "", notInTab: true });
+  }
+  return [...projectRows, ...extra.values()];
+}
+
+const PREVIOUS_NAMES = "previous-names";
+
+function splitNames(value) {
+  return String(value || "").split(",").map((name) => name.trim()).filter(Boolean);
+}
+
+// old name (lower-case) -> current name, from the projects tab.
+function renamesFrom(projectRows) {
+  const map = new Map();
+  for (const row of projectRows) for (const old of splitNames(row[PREVIOUS_NAMES])) map.set(old.toLowerCase(), row.project);
+  return map;
+}
+
+async function renameProject(request, env, deps, name) {
+  const input = await body(request);
+  const from = String(name || "").trim();
+  const to = String(input.to || "").trim().replace(/\s+/g, " ");
+  if (!to) throw new HttpError(400, "Type the new name.");
+  if (to.length > 80) throw new HttpError(400, "That name is too long (80 characters at most).");
+  if (/,/.test(to)) throw new HttpError(400, "Project names can't contain commas.");
+  if (to === from) throw new HttpError(400, "That's already its name.");
+  const fromKey = from.toLowerCase();
+  const toKey = to.toLowerCase();
+
+  const sheets = sheetsFor(env, deps);
+  const { itemsTab, projectsTab } = config(env);
+  const items = await readItemsTab(sheets, itemsTab);
+  const projects = await sheets.readTab(projectsTab).catch(() => null);
+  const keyOf = (value) => String(value || "").trim().toLowerCase();
+  const pieces = items.rows.filter((row) => keyOf(row["data-project"]) === fromKey);
+  const projectRows = projects ? projects.rows.filter((row) => keyOf(row.project) === fromKey) : [];
+  if (!pieces.length && !projectRows.length) throw new HttpError(404, `No project “${from}”.`);
+  if (toKey !== fromKey) {
+    const taken = items.rows.some((row) => keyOf(row["data-project"]) === toKey) || (projects?.rows || []).some((row) => keyOf(row.project) === toKey);
+    if (taken) throw new HttpError(409, `“${to}” already exists. Move its pieces or choose another name.`);
+  }
+
+  const projectColumn = items.headers.indexOf("data-project");
+  if (projectColumn === -1) throw new HttpError(409, `${itemsTab} has no "data-project" column.`);
+  await sheets.updateCells(itemsTab, pieces.map((row) => ({ row: row._row, column: projectColumn, value: to })));
+
+  const warnings = [];
+  if (!projects || !projects.headers.includes("project")) {
+    warnings.push(`The "${projectsTab}" tab has no "project" column, so the old address won't redirect to the new one.`);
+  } else {
+    let headers = projects.headers;
+    let previousColumn = headers.indexOf(PREVIOUS_NAMES);
+    if (previousColumn === -1) {
+      previousColumn = headers.length;
+      await sheets.updateCells(projectsTab, [{ row: 1, column: previousColumn, value: PREVIOUS_NAMES }]);
+      headers = [...headers, PREVIOUS_NAMES];
+    }
+    const nameColumn = headers.indexOf("project");
+    if (projectRows.length) {
+      const cells = [];
+      for (const row of projectRows) {
+        const previous = [...splitNames(row[PREVIOUS_NAMES]), from].filter((n, i, all) => n.toLowerCase() !== toKey && all.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
+        cells.push({ row: row._row, column: nameColumn, value: to }, { row: row._row, column: previousColumn, value: previous.join(", ") });
+      }
+      await sheets.updateCells(projectsTab, cells);
+    } else {
+      await sheets.appendRows(projectsTab, [toRow({ project: to, description: "", [PREVIOUS_NAMES]: from }, headers)]);
+    }
+  }
+
+  // Drafts and Studio-written descriptions follow the new name.
+  await env.DB.prepare("UPDATE drafts SET project = ?, updated_at = ? WHERE status = 'draft' AND lower(project) = ?").bind(to, nowIso(), fromKey).run();
+  const saved = await env.DB.prepare("SELECT * FROM project_drafts WHERE name = ?").bind(fromKey).first();
+  if (saved) {
+    await env.DB.prepare("DELETE FROM project_drafts WHERE name = ?").bind(fromKey).run();
+    await env.DB.prepare(
+      `INSERT INTO project_drafts (name, project, description, answers, updated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET project = excluded.project, description = excluded.description,
+         answers = excluded.answers, updated_at = excluded.updated_at`
+    )
+      .bind(toKey, to, saved.description, saved.answers, nowIso())
+      .run();
+  }
+
+  // Rebuilds the project pages and the redirect from the old address.
+  const deploy = await triggerSiteDeploy(env, deps.fetch);
+  if (!deploy.ok) warnings.push(`Renamed, but the site refresh didn't start: ${deploy.reason}`);
+  return json({ renamed: { from, to }, pieces: pieces.length, warnings, deploy });
 }
 
 // The alt texts written earlier (src/data/scroll-items.json and
@@ -569,7 +667,10 @@ async function listLibrary(env, deps, pieces) {
   const tab = await readItemsTab(sheets, itemsTab);
   const live = liveKeys(tab.rows);
   const pending = await pendingLibraryKeys(env);
-  const notLive = pieces.filter((piece) => !live.has(piece.key.toLowerCase()));
+  const renames = renamesFrom((await sheets.readTab(config(env).projectsTab).catch(() => ({ rows: [] }))).rows);
+  const notLive = pieces
+    .filter((piece) => !live.has(piece.key.toLowerCase()))
+    .map((piece) => (renames.has(String(piece.project).toLowerCase()) ? { ...piece, project: renames.get(String(piece.project).toLowerCase()) } : piece));
   return json({
     total: pieces.length,
     onSite: pieces.length - notLive.length,
@@ -577,8 +678,14 @@ async function listLibrary(env, deps, pieces) {
   });
 }
 
-async function addFromLibrary(request, env, pieces) {
+async function addFromLibrary(request, env, deps, pieces) {
   const input = await body(request);
+  let renames = new Map();
+  try {
+    renames = renamesFrom((await sheetsFor(env, deps).readTab(config(env).projectsTab)).rows);
+  } catch {
+    // Without the sheet, keep the library's own project names.
+  }
   const keys = Array.isArray(input.keys) ? [...new Set(input.keys.map(String))] : [];
   if (!keys.length) throw new HttpError(400, "Choose at least one piece.");
   const byKey = new Map(pieces.map((piece) => [piece.key, piece]));
@@ -595,7 +702,7 @@ async function addFromLibrary(request, env, pieces) {
       `INSERT INTO drafts (id, created_at, updated_at, status, kind, file_name, width, height, src, variants, frames, project, library_key)
        VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
     )
-      .bind(id, time, time, piece.kind, piece.src.split("/").pop(), piece.width, piece.height, piece.src, JSON.stringify(piece.variants || {}), piece.project || null, key)
+      .bind(id, time, time, piece.kind, piece.src.split("/").pop(), piece.width, piece.height, piece.src, JSON.stringify(piece.variants || {}), renames.get(String(piece.project).toLowerCase()) || piece.project || null, key)
       .run();
     added.push(id);
   }
@@ -769,11 +876,12 @@ export async function handle(request, env, deps = {}) {
       return json({ started: true });
     }
     if (parts[0] === "items" && parts.length === 2 && method === "DELETE") return await deleteItem(env, deps, decodeURIComponent(parts[1]));
+    if (parts[0] === "projects" && parts.length === 3 && parts[2] === "rename" && method === "POST") return await renameProject(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "projects" && parts.length === 2 && method === "DELETE") return await deleteProject(env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "items" && parts.length === 2 && method === "PATCH") return await editItem(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "projects" && parts.length === 2 && method === "PUT") return await editProjectDescription(request, env, deps, decodeURIComponent(parts[1]));
     if (parts[0] === "library" && parts.length === 1 && method === "GET") return await listLibrary(env, deps, deps.library || library);
-    if (parts[0] === "library" && parts[1] === "add" && method === "POST") return await addFromLibrary(request, env, deps.library || library);
+    if (parts[0] === "library" && parts[1] === "add" && method === "POST") return await addFromLibrary(request, env, deps, deps.library || library);
     if (parts[0] === "order" && method === "PUT") return await saveOrder(request, env, deps);
     if (parts[0] === "publish" && method === "POST") return await publish(request, env, deps);
     return json({ error: "Not found." }, 404);

@@ -22,7 +22,7 @@ const SKIP = [/^about-ul-/i, /^thanks-footer/i];
 const PROJECTS = [
   [/^(SJC_|Scene-0)/i, "surf overdose"],
   [/^(DTMS_|dtms_portfolio)/i, "dtms branding"],
-  [/^Guarana/i, "2014 world cup"],
+  [/^Guarana/i, "guaraná world cup cans"],
   [/^ATT Print/i, "cce"],
   [/^NIKE_MARATHON/i, "fastest ever"],
   [/^OW_/i, "ow posters"],
@@ -68,7 +68,7 @@ const SUGGESTED = new Set([
   "DTMS_post_20",
   "dtms_portfolio_05",
   "dtms_portfolio_09",
-  // 2014 world cup
+  // guaraná world cup cans
   "Guarana_1920x1080_Latas6",
   "Guarana_1920x1080_Latas8",
   "Guarana_1920x1080_Latas11",
