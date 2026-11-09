@@ -635,3 +635,16 @@ main:has(.home-scroll-container) {
   background-color: var(--color-black, #000);
   color: var(--color-white, #fff);
 }
+
+/* Phones: the intro's lines stop at the header instead of passing under its
+   links (at phone size the two are close in size and read as a jumble). */
+.home-intro-clip {
+  position: absolute;
+  inset: 0;
+}
+
+@media (max-width: 1023px) {
+  .home-intro-clip {
+    clip-path: inset(66px 0 0 0);
+  }
+}
