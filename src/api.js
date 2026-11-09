@@ -4,6 +4,8 @@ import videoAltText from "./data/video-alt-text.json";
 import { createAltLookup } from "./altText";
 import { csvToObjects, projectsFromCsv } from "./csv";
 import { titleCase } from "./site";
+import { previousNames, slugifyProjectName } from "./utils";
+import { redirect } from "react-router-dom";
 
 const DEFAULT_ITEMS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/export?format=csv&gid=0";
@@ -178,12 +180,16 @@ export async function homeLoader() {
 export async function projectLoader({ params }) {
   const id = params.id;
   const [projects, items] = await Promise.all([fetchProjects(), fetchItems()]);
-  const lookup = id.replace(/-/g, " ").toLowerCase();
-  const project = projects.find((entry) => String(entry.project || "").toLowerCase() === lookup);
-  const projectName =
-    project?.project ||
-    items.find((item) => String(item.project || "").toLowerCase() === lookup)?.project ||
-    lookup;
+  const slug = slugifyProjectName(id);
+  const project = projects.find((entry) => slugifyProjectName(entry.project) === slug);
+  const projectName = project?.project || items.find((item) => slugifyProjectName(item.project) === slug)?.project;
+
+  if (!projectName) {
+    // A renamed project: send old links to its new address.
+    const renamed = projects.find((entry) => previousNames(entry).some((name) => slugifyProjectName(name) === slug));
+    if (renamed) throw redirect(`/project/${slugifyProjectName(renamed.project)}`);
+    throw new Response("Not Found", { status: 404 });
+  }
 
   const result = {
     ...(project || {}),

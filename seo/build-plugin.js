@@ -15,6 +15,7 @@ import { createAltLookup } from "../src/altText.js";
 import { csvToObjects, projectsFromCsv } from "../src/csv.js";
 import { compareForProject } from "../src/order.js";
 import { SITE, projectDescription, projectTitle, titleCase } from "../src/site.js";
+import { previousNames, slugifyProjectName } from "../src/utils.js";
 
 const DEFAULT_ITEMS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1XQQqzopAlJpwbAhBulpXUH28aUlIqdj_yXO8YWn1S0E/export?format=csv&gid=0";
@@ -28,9 +29,8 @@ const ABOUT_TEXT = [
   "Rodrigo is especially interested in the systems behind memorable work: the insight, grid, voice, references, and production logic that help an idea travel across channels without losing its point of view."
 ];
 
-function slugify(name = "") {
-  return String(name).trim().toLowerCase().replace(/\s+/g, "-");
-}
+// Must match the browser's project links (src/utils.js).
+const slugify = slugifyProjectName;
 
 function escapeHtml(value = "") {
   return String(value)
@@ -78,18 +78,38 @@ async function loadItems(rootDir, csvUrl, log) {
   return JSON.parse(fs.readFileSync(path.join(rootDir, "src/data/scroll-items.json"), "utf8"));
 }
 
-async function loadProjectDescriptions(projectsCsvUrl, log) {
+async function loadProjectsTab(projectsCsvUrl, log) {
   try {
-    return new Map(
-      projectsFromCsv(await fetchText(projectsCsvUrl)).map((entry) => [
-        String(entry.project).trim().toLowerCase(),
-        String(entry.description || "").trim()
-      ])
-    );
+    return projectsFromCsv(await fetchText(projectsCsvUrl));
   } catch (error) {
     log(`seo: projects tab unavailable (${error.message})`);
-    return new Map();
+    return [];
   }
+}
+
+function descriptionsOf(entries) {
+  return new Map(entries.map((entry) => [String(entry.project).trim().toLowerCase(), String(entry.description || "").trim()]));
+}
+
+/**
+ * Permanent redirects from the addresses of renamed projects (the projects
+ * tab's "previous-names", written by the Studio's Rename) to the current ones.
+ * @returns {string} .htaccess rules, or "" when there are none
+ */
+export function renameRedirects(entries, base = "/") {
+  const rules = [];
+  const seen = new Set();
+  for (const entry of entries) {
+    const target = slugify(entry.project);
+    for (const name of previousNames(entry)) {
+      const from = slugify(name);
+      if (!from || from === target || seen.has(from)) continue;
+      seen.add(from);
+      rules.push(`RewriteRule ^project/${from}/?$ ${base}project/${target} [R=301,L]`);
+    }
+  }
+  if (!rules.length) return "";
+  return `\n# Renamed projects (written at build time from the projects tab)\nRewriteEngine On\n${rules.join("\n")}\n`;
 }
 
 function field(item, key) {
@@ -419,7 +439,8 @@ export default function seoBuildPlugin() {
       const noindex = config.mode !== "production" || base !== "/";
 
       const items = await loadItems(config.root, env.VITE_ITEMS_CSV_URL || DEFAULT_ITEMS_CSV_URL, log);
-      const descriptions = await loadProjectDescriptions(env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL, log);
+      const projectsTab = await loadProjectsTab(env.VITE_PROJECTS_CSV_URL || DEFAULT_PROJECTS_CSV_URL, log);
+      const descriptions = descriptionsOf(projectsTab);
       const localItems = JSON.parse(fs.readFileSync(path.join(config.root, "src/data/scroll-items.json"), "utf8"));
       const projects = groupProjects(items, descriptions, createAltLookup(
           localItems,
@@ -433,6 +454,11 @@ export default function seoBuildPlugin() {
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, renderPage(template, page, { noindex }));
       }
+
+      // Old project addresses -> new ones. Appended before the deploy adds the
+      // routing rules, so these run first.
+      const redirects = renameRedirects(projectsTab, base);
+      if (redirects) fs.appendFileSync(path.join(outDir, ".htaccess"), redirects);
 
       fs.writeFileSync(path.join(outDir, "robots.txt"), robots({ noindex }));
       if (!noindex) {

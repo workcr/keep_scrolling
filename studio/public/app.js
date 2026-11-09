@@ -1007,6 +1007,25 @@ async function deleteLive(kind, name, what) {
   }
 }
 
+async function renameProject(name) {
+  const to = prompt(
+    `Rename “${name}” to:\n\nEvery piece, its description and any drafts move to the new name. Its page gets a new address, and the old one keeps working by sending visitors and search engines to the new page.`,
+    name
+  );
+  if (to === null || to.trim() === "" || to.trim() === name) return;
+  try {
+    const result = await api("POST", `/api/projects/${encodeURIComponent(name)}/rename`, { to: to.trim() });
+    notify(
+      `Renamed “${name}” to “${result.renamed.to}” on ${result.pieces} piece${result.pieces === 1 ? "" : "s"}. Visitors see it now; the search-engine pages and the redirect from the old address update in a few minutes.` +
+        (result.warnings.length ? ` ${result.warnings.join(" ")}` : ""),
+      result.warnings.length ? "error" : "ok"
+    );
+    await Promise.all([loadContent(), loadDrafts()]);
+  } catch (error) {
+    notify(error.message, "error");
+  }
+}
+
 function renderLive() {
   const content = state.content;
   if (!content) {
@@ -1042,7 +1061,7 @@ function renderLive() {
       return el(
         "div",
         { class: "project" },
-        el("strong", {}, project.project),
+        el("strong", {}, project.project, project.notInTab ? el("span", { class: "muted" }, " · no description yet") : null),
         area,
         el(
           "div",
@@ -1051,6 +1070,7 @@ function renderLive() {
             await api("PUT", `/api/projects/${encodeURIComponent(project.project)}`, { project: project.project, description: area.value.trim() });
             project.description = area.value.trim();
           }),
+          el("button", { type: "button", class: "link", onclick: () => renameProject(project.project) }, "Rename"),
           el("button", { type: "button", class: "link", onclick: () => deleteLive("projects", project.project, `the project “${project.project}” and its description`) }, "Delete")
         )
       );
