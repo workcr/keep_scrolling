@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLoaderData } from "react-router-dom";
+import HomeIntro, { introAlreadySeen } from "../components/HomeIntro";
 import MediaCard from "../components/MediaCard";
 import Seo from "../components/Seo";
 import scrollItems from "../data/scroll-items.json";
+import { SITE } from "../site";
 import { slugifyProjectName } from "../utils";
 
 const INITIAL_BATCH = 24;
@@ -118,6 +120,14 @@ export default function Home() {
     height: typeof window !== "undefined" ? window.innerHeight : 0
   }));
   const scrollerRef = useRef(null);
+  const [introActive, setIntroActive] = useState(() => typeof window !== "undefined" && !introAlreadySeen());
+  const [promptFadeIn, setPromptFadeIn] = useState(false);
+  const endIntro = useCallback(() => {
+    setIntroActive(false);
+    // "Scroll ↓↓↓" fades in once; after that it follows the scroll directly.
+    setPromptFadeIn(true);
+    setTimeout(() => setPromptFadeIn(false), 800);
+  }, []);
   const targetScrollRef = useRef(0);
   const currentScrollRef = useRef(0);
   const lastPaintedRef = useRef(0);
@@ -203,8 +213,13 @@ export default function Home() {
   return (
     <div className="carrousel-container home-scroll-container" ref={scrollerRef}>
       <Seo path="/" />
+      {/* The introduction, for search engines and screen readers on every visit. */}
+      <h1 className="visually-hidden">{SITE.intro}</h1>
+      {introActive && (
+        <HomeIntro text={SITE.intro} wordmarkSrc="/assets/keep%20scRolling.svg" frameRef={scrollerRef} onDone={endIntro} />
+      )}
       <div className="home-stage">
-        <div className="home-scroll-prompt" style={{ opacity: promptOpacity }}>
+        <div className={`home-scroll-prompt${promptFadeIn ? " home-scroll-prompt-enter" : ""}`} style={{ opacity: introActive ? 0 : promptOpacity }}>
           <div className="text-3xl flex flex-col gap-6">
             Scroll
             <div className="flex flex-col items-center">
