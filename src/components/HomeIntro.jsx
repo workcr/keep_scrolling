@@ -123,11 +123,14 @@ export default function HomeIntro({ text, wordmarkSrc, frameRef, onDone }) {
     const mark = markRef.current;
     const wrap = markWrapRef.current;
     if (!overlay || !textNode || !end || !mark || !wrap) return;
-    const height = overlay.clientHeight;
+    // The header floats over the top of the home page; start the text below it.
+    const navBottom = document.querySelector("nav")?.getBoundingClientRect().bottom || 0;
+    const top = Math.max(0, Math.round(navBottom - overlay.getBoundingClientRect().top));
+    const height = overlay.clientHeight - top;
     const textHeight = textNode.offsetHeight;
     // Text that fills the screen starts near the top; text that would fit at
     // once (phones) slides in from the bottom instead.
-    const start = textHeight > height * 0.9 ? Math.round(height * 0.06) : Math.round(height * 0.85);
+    const start = top + (textHeight > height * 0.9 ? Math.round(height * 0.06) : Math.round(height * 0.85));
     const lastBaseline = end.offsetTop; // baseline of the last line, inside the text
     // "keep scRolling" as the next line: one line lower, baseline on baseline.
     const markFromText = lastBaseline + LINE_HEIGHT * type.fontSize - SVG_BASELINE * type.unit;
