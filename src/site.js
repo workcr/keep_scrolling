@@ -33,13 +33,27 @@ export const SITE = {
 
 // Sheet values are lowercase ("dtms branding"). Capitalise words and upper-case
 // vowel-less tokens, which are almost always acronyms (DTMS, CR, WKSP, HS).
+// Names the word-by-word rules below would get wrong (acronyms with vowels,
+// accents the sheet leaves out). Keys are lower-case.
+const NAMES = {
+  att: "AT&T",
+  cce: "CCE",
+  ow: "OW",
+  ooh: "OOH",
+  "3d": "3D",
+  guarana: "Guaraná",
+  sjc: "SJC"
+};
+
 export function titleCase(value = "") {
   return String(value)
     .trim()
     .split(/\s+/)
     .map((word) => {
+      if (NAMES[word.toLowerCase()]) return NAMES[word.toLowerCase()];
       if (/[A-Z]/.test(word)) return word;
-      if (/^[b-df-hj-np-tv-z]+$/i.test(word)) return word.toUpperCase();
+      // Vowel-less words are acronyms (DTMS, CR, WKSP); "y" words like "why" are not.
+      if (/^[b-df-hj-np-tv-xz]+$/i.test(word)) return word.toUpperCase();
       return word.charAt(0).toUpperCase() + word.slice(1);
     })
     .join(" ");

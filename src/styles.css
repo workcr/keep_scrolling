@@ -451,3 +451,11 @@
     margin-top: 0;
   }
 }
+
+/* Names are formatted in code (titleCase in src/site.js) so acronyms read
+   right: AT&T, CCE, DTMS, OOH. CSS capitalize would turn them into "Att". */
+.filters li a,
+nav button.filter,
+nav button.filter-mobile {
+  text-transform: none;
+}
